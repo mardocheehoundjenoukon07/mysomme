@@ -137,6 +137,15 @@ const LIGHT = { bg:"#F0F2F8", card:"#FFFFFF",  border:"#DDE1EE", border2:"#CDD2E
 function useWindowWidth() {
   const [w, setW] = useState(typeof window !== "undefined" ? window.innerWidth : 375);
   useEffect(() => {
+    // ── RESET GLOBAL — supprime les marges du navigateur ──
+    const style = document.createElement("style");
+    style.id = "ms-reset";
+    style.textContent = `
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+      html, body { margin: 0 !important; padding: 0 !important; width: 100%; overflow-x: hidden; background: #080A11; }
+      #root, [data-reactroot] { margin: 0; padding: 0; width: 100%; }
+    `;
+    if (!document.getElementById("ms-reset")) document.head.appendChild(style);
     const h = () => setW(window.innerWidth);
     window.addEventListener("resize", h);
     return () => window.removeEventListener("resize", h);
@@ -322,8 +331,25 @@ export default function MySomme() {
   const OP_BG   = dark ? OP_BG_D : OP_BG_L;
   const isToday = selectedDate === todayStr();
 
-  // Charger agent
+  // ─── INJECTION CSS GLOBALE — supprime toute marge/padding des conteneurs parents ──
   useEffect(() => {
+    const style = document.createElement("style");
+    style.id = "ms-global";
+    style.textContent = `
+      *, *::before, *::after { box-sizing: border-box !important; }
+      html, body { margin: 0 !important; padding: 0 !important; width: 100% !important; max-width: 100% !important; overflow-x: hidden !important; background: #080A11 !important; }
+      #root, [id^="react"], body > div { margin: 0 !important; padding: 0 !important; width: 100% !important; max-width: 100% !important; }
+      button { -webkit-tap-highlight-color: transparent; }
+      input { -webkit-appearance: none; }
+    `;
+    if (!document.getElementById("ms-global")) document.head.appendChild(style);
+    return () => { const el = document.getElementById("ms-global"); if (el) el.remove(); };
+  }, []);
+
+  // Sync body background with theme
+  useEffect(() => {
+    document.body.style.background = dark ? "#080A11" : "#F0F2F8";
+  }, [dark]);
     const saved = lsGet("ms_agent");
     if (saved) { setAgent(saved); setLocked(true); }
   }, []);
@@ -463,7 +489,7 @@ export default function MySomme() {
 
   // ─── CONTENT PADDING ─────────────────────────────────────────────────────
   // Mobile: 0 padding horizontal → chaque carte gère ses propres marges
-  const contentPad = desktop ? "16px 28px 40px" : tablet ? "14px 20px 100px" : "0 0 100px";
+  const contentPad = desktop ? "16px 28px 40px" : tablet ? "14px 20px 130px" : "0 0 130px";
   const mainLeft   = desktop ? 240 : 0;
   const contentMax = desktop ? 820 : tablet ? 720 : "100%";
   // Marge horizontale pour les cartes sur mobile
@@ -472,7 +498,14 @@ export default function MySomme() {
 
   // ─── RENDER ───────────────────────────────────────────────────────────────
   return (
-    <div style={{ background:T.bg, minHeight:"100vh", color:T.text, fontFamily:"'Segoe UI', system-ui, sans-serif", position:"relative", overflowX:"hidden" }}>
+    <>
+      <style>{`
+        *, *::before, *::after { box-sizing: border-box !important; }
+        html { margin: 0 !important; padding: 0 !important; background: ${T.bg} !important; }
+        body { margin: 0 !important; padding: 0 !important; width: 100vw !important; max-width: 100% !important; overflow-x: hidden !important; background: ${T.bg} !important; }
+        #root, [data-reactroot] { margin: 0 !important; padding: 0 !important; }
+      `}</style>
+    <div style={{ background:T.bg, minHeight:"100vh", width:"100vw", maxWidth:"100%", margin:0, padding:0, color:T.text, fontFamily:"'Segoe UI', system-ui, sans-serif", position:"relative", overflowX:"hidden" }}>
 
       {/* FLASH */}
       {flash && (
@@ -520,7 +553,6 @@ export default function MySomme() {
 
           {/* Bas sidebar */}
           <div style={{ padding:"12px 12px 8px", borderTop:`1px solid ${T.border}` }}>
-            <button onClick={() => setDark(d => !d)}
               style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 14px", borderRadius:10, border:"none", background:"transparent", color:T.sub, fontSize:13, cursor:"pointer", marginBottom:6 }}>
               <span style={{ fontSize:16 }}>{dark ? "☀️" : "🌙"}</span>{dark ? "Mode clair" : "Mode sombre"}
             </button>
@@ -534,7 +566,7 @@ export default function MySomme() {
 
       {/* ═══ HEADER (Mobile + Tablet) ════════════════════════════════════════ */}
       {!desktop && (
-        <header style={{ background:T.card, padding: tablet ? "14px 20px" : "12px 14px", borderBottom:`1px solid ${T.border}`, display:"flex", justifyContent:"space-between", alignItems:"center", position:"sticky", top:0, zIndex:50 }}>
+        <header style={{ background:T.card, padding: tablet ? "14px 20px" : "12px 14px", borderBottom:`1px solid ${T.border}`, display:"flex", justifyContent:"space-between", alignItems:"center", position:"sticky", top:0, zIndex:50, width:"100%", boxSizing:"border-box" }}>
           <div style={{ display:"flex", alignItems:"center", gap:10 }}>
             <div style={{ width:36, height:36, background:"linear-gradient(135deg,#00C896,#00A5FF)", borderRadius:10, display:"flex", alignItems:"center", justifyContent:"center", fontWeight:900, fontSize:13, color:"#fff" }}>MS</div>
             <div>
@@ -544,10 +576,7 @@ export default function MySomme() {
           </div>
           <div style={{ display:"flex", alignItems:"center", gap:8 }}>
             {pendingCount > 0 && <div style={{ background:"#FFB80018", color:"#FFB800", borderRadius:8, padding:"3px 8px", fontSize:10, fontWeight:700 }}>⚡{pendingCount}</div>}
-            <button onClick={() => setDark(d => !d)} style={{ background:dark?"#22263A":"#E4E8F5", border:"none", borderRadius:20, padding:"5px 9px", cursor:"pointer", fontSize:15 }}>{dark?"☀️":"🌙"}</button>
             <button onClick={() => setShowCal(true)} style={{ background:dark?"#22263A":"#E4E8F5", border:"none", borderRadius:9, padding:"6px 9px", cursor:"pointer", fontSize:15 }}>📅</button>
-            <button onClick={shareReport} style={{ background:"#00C89618", border:"1px solid #00C89630", borderRadius:9, padding:"6px 9px", cursor:"pointer", fontSize:15 }}>📤</button>
-            <button onClick={() => setConfirmLogout(true)} style={{ background:"#E6394615", border:"1px solid #E6394630", borderRadius:9, padding:"6px 10px", cursor:"pointer", fontSize:12, color:"#E63946", fontWeight:700 }}>🔓</button>
           </div>
         </header>
       )}
@@ -563,9 +592,7 @@ export default function MySomme() {
             <button onClick={() => setShowCal(true)} style={{ background:T.hero, border:`1px solid ${T.border}`, borderRadius:9, padding:"7px 12px", cursor:"pointer", fontSize:13, color:T.text, fontWeight:600, display:"flex", alignItems:"center", gap:6 }}>
               📅 Changer de date
             </button>
-            <button onClick={shareReport} style={{ background:"#00C89618", border:"1px solid #00C89630", borderRadius:9, padding:"7px 12px", cursor:"pointer", fontSize:13, color:"#00C896", fontWeight:700 }}>
-              📤 Partager
-            </button>
+
           </div>
         </header>
       )}
@@ -769,7 +796,6 @@ export default function MySomme() {
                     <div style={{ fontWeight:700, fontSize:13 }}>{dark ? "Mode sombre" : "Mode clair"}</div>
                     <div style={{ fontSize:11, color:T.sub }}>Changer l'apparence de l'app</div>
                   </div>
-                  <button onClick={() => setDark(d => !d)} style={{ padding:"8px 20px", borderRadius:10, background:dark?"#22263A":"#E4E8F5", border:`1px solid ${T.border}`, color:T.text, fontWeight:700, fontSize:14, cursor:"pointer" }}>
                     {dark ? "☀️ Clair" : "🌙 Sombre"}
                   </button>
                 </div>
@@ -802,7 +828,7 @@ export default function MySomme() {
 
       {/* ═══ FABs (Mobile + Tablet) ══════════════════════════════════════════ */}
       {!desktop && isToday && (
-        <div style={{ position:"fixed", bottom: mobile ? 72 : 80, right: tablet ? 20 : 14, display:"flex", flexDirection:"column", gap:10, zIndex:60 }}>
+        <div style={{ position:"fixed", bottom: mobile ? 110 : 120, right: tablet ? 20 : 14, display:"flex", flexDirection:"column", gap:10, zIndex:60 }}>
           <button onClick={() => { setModal("forfait"); setForm({}); }} style={{ width:48, height:48, borderRadius:"50%", background:"#FFB800", border:"none", color:"#000", fontSize:18, cursor:"pointer", boxShadow:"0 3px 14px #FFB80060", display:"flex", alignItems:"center", justifyContent:"center" }}>📶</button>
           <button onClick={() => { setModal("retrait"); setForm({}); }} style={{ width:48, height:48, borderRadius:"50%", background:"#4F8EF7", border:"none", color:"#fff", fontSize:18, cursor:"pointer", boxShadow:"0 3px 14px #4F8EF760", display:"flex", alignItems:"center", justifyContent:"center" }}>⬆️</button>
           <button onClick={() => { setModal("depot"); setForm({}); }} style={{ width:56, height:56, borderRadius:"50%", background:"linear-gradient(135deg,#00C896,#009E78)", border:"none", color:"#fff", fontSize:22, cursor:"pointer", boxShadow:"0 4px 20px #00C89660", display:"flex", alignItems:"center", justifyContent:"center" }}>⬇️</button>
@@ -811,13 +837,20 @@ export default function MySomme() {
 
       {/* ═══ BOTTOM NAV (Mobile + Tablet) ════════════════════════════════════ */}
       {!desktop && (
-        <nav style={{ position:"fixed", bottom:0, left:0, right:0, background:T.nav, borderTop:`1px solid ${T.border}`, display:"flex", justifyContent:"space-around", padding: tablet ? "10px 0 16px" : "8px 0 14px", zIndex:50 }}>
-          {NAV_ITEMS.map(([key, icon, label]) => (
-            <button key={key} onClick={() => setTab(key)} style={{ background:"none", border:"none", color:tab===key?"#00C896":T.faint, fontSize: tablet ? 11 : 10, fontWeight:tab===key?800:500, cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", gap:3, padding: tablet ? "0 20px" : "0 14px", WebkitTapHighlightColor:"transparent" }}>
-              <span style={{ fontSize: tablet ? 24 : 22 }}>{icon}</span>{label}
-              {tab===key && <div style={{ width:4, height:4, borderRadius:"50%", background:"#00C896" }} />}
-            </button>
-          ))}
+        <nav style={{ position:"fixed", bottom:0, left:0, right:0, background:T.nav, borderTop:`1px solid ${T.border}`, zIndex:50, width:"100%" }}>
+          <div style={{ display:"flex", justifyContent:"space-around", padding: tablet ? "10px 0 10px" : "8px 0 10px" }}>
+            {NAV_ITEMS.map(([key, icon, label]) => (
+              <button key={key} onClick={() => setTab(key)} style={{ background:"none", border:"none", color:tab===key?"#00C896":T.faint, fontSize: tablet ? 11 : 10, fontWeight:tab===key?800:500, cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", gap:3, padding: tablet ? "0 16px" : "0 12px", WebkitTapHighlightColor:"transparent" }}>
+                <span style={{ fontSize: tablet ? 22 : 21 }}>{icon}</span>{label}
+                {tab===key && <div style={{ width:4, height:4, borderRadius:"50%", background:"#00C896" }} />}
+              </button>
+            ))}
+          </div>
+          {/* Bouton déconnexion rouge tout en bas */}
+          <button onClick={() => setConfirmLogout(true)}
+            style={{ width:"100%", padding: tablet ? "10px 0 18px" : "9px 0 calc(env(safe-area-inset-bottom) + 10px)", background:"#E63946", border:"none", color:"#fff", fontWeight:800, fontSize:13, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:8, letterSpacing:"0.3px" }}>
+            🔓 &nbsp;Se déconnecter
+          </button>
         </nav>
       )}
 
@@ -955,5 +988,6 @@ export default function MySomme() {
         </div>
       )}
     </div>
+    </>
   );
 }
