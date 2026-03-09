@@ -16,7 +16,17 @@ const pendKey = (uid)       => `ms_pend_${uid}`;
 async function fetchTxsByDate(dateStr, userId) {
   try {
     const res = await fetch(`${SUPA_URL}/rest/v1/transactions?created_at=gte.${dateStr}T00:00:00&created_at=lt.${dateStr}T23:59:59&user_id=eq.${userId}&order=created_at.desc`, { headers: H });
-    if (res.ok) { const data = await res.json(); lsSet(txKey(dateStr, userId), data); return data; }
+    if (res.ok) {
+      const serverData = await res.json();
+      // Fusionner avec les opérations en attente pour ne pas les perdre
+      const pending = lsGet(pendKey(userId)) || [];
+      const pendingToday = pending.filter(t => t.created_at && t.created_at.startsWith(dateStr));
+      const merged = [...pendingToday, ...serverData.filter(s => !pendingToday.find(p => p.localId === s.localId))];
+      // Ne mettre en cache que si on a autant ou plus de données qu'avant
+      const cached = lsGet(txKey(dateStr, userId)) || [];
+      if (merged.length >= cached.length) lsSet(txKey(dateStr, userId), merged);
+      return merged;
+    }
   } catch {}
   return lsGet(txKey(dateStr, userId)) || [];
 }
@@ -353,9 +363,13 @@ export default function MySomme() {
 
   const loadTxs = useCallback(async (date) => {
     if (!agent) return;
-    setLoading(true);
-    const data = await fetchTxsByDate(date, agent.telephone);
-    setTxs(data || []);
+    // 1. Cache immédiat — aucun délai visible pour l'utilisateur
+    const cached = lsGet(txKey(date, agent.telephone)) || [];
+    if (cached.length > 0) { setTxs(cached); setLoading(false); }
+    else setLoading(true);
+    // 2. Sync silencieuse en arrière-plan
+    const fresh = await fetchTxsByDate(date, agent.telephone);
+    setTxs(fresh.length > 0 ? fresh : cached);
     setLoading(false);
   }, [agent]);
 
@@ -448,9 +462,13 @@ export default function MySomme() {
     : { width:"100%", background:T.card, borderRadius:"22px 22px 0 0", padding:"16px 16px 42px", border:`1px solid ${T.border2}`, maxHeight:"90vh", overflowY:"auto" };
 
   // ─── CONTENT PADDING ─────────────────────────────────────────────────────
-  const contentPad = desktop ? "16px 28px 40px" : tablet ? "14px 20px 100px" : "12px 14px 100px";
+  // Mobile: 0 padding horizontal → chaque carte gère ses propres marges
+  const contentPad = desktop ? "16px 28px 40px" : tablet ? "14px 20px 100px" : "0 0 100px";
   const mainLeft   = desktop ? 240 : 0;
   const contentMax = desktop ? 820 : tablet ? 720 : "100%";
+  // Marge horizontale pour les cartes sur mobile
+  const cm = mobile ? "0 12px" : 0; // card margin
+  const cp = mobile ? "14px 14px" : "15px"; // card padding
 
   // ─── RENDER ───────────────────────────────────────────────────────────────
   return (
@@ -463,10 +481,10 @@ export default function MySomme() {
         </div>
       )}
 
-      {/* PENDING SYNC BADGE */}
+      {/* PENDING SYNC BADGE — discret, dans le coin */}
       {pendingCount > 0 && (
-        <div style={{ position:"fixed", top:20, right:20, background:"#FFB800", color:"#000", borderRadius:12, padding:"8px 14px", fontWeight:800, fontSize:12, zIndex:999, boxShadow:"0 4px 16px #FFB80050" }}>
-          ⚡ {pendingCount} op. en attente de sync
+        <div style={{ position:"fixed", bottom: mobile?76:84, left:12, background:"#FFB800", color:"#000", borderRadius:20, padding:"5px 10px", fontWeight:800, fontSize:11, zIndex:999, boxShadow:"0 2px 10px #FFB80060", pointerEvents:"none" }}>
+          ⚡ {pendingCount} en attente
         </div>
       )}
 
@@ -558,7 +576,7 @@ export default function MySomme() {
 
           {/* Bandeau date passée */}
           {!isToday && (
-            <div style={{ background:"#4F8EF720", border:"1px solid #4F8EF740", marginBottom:14, borderRadius:12, padding:"10px 14px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+            <div style={{ background:"#4F8EF720", border:"1px solid #4F8EF740", margin: mobile ? "10px 12px 10px" : "0 0 14px", borderRadius:12, padding:"10px 14px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
               <div style={{ fontSize:13, fontWeight:700, color:"#4F8EF7" }}>📅 {new Date(selectedDate).toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</div>
               <button onClick={() => setSelectedDate(todayStr())} style={{ background:"#4F8EF7", border:"none", borderRadius:8, padding:"5px 12px", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer" }}>Aujourd'hui</button>
             </div>
@@ -566,8 +584,8 @@ export default function MySomme() {
 
           {/* ══ ACCUEIL ══ */}
           {tab === "accueil" && <>
-            {/* Hero card */}
-            <div style={{ background:`linear-gradient(135deg,${T.hero},${T.card})`, borderRadius:18, padding: desktop ? 24 : 16, marginBottom:14, border:`1px solid ${T.border2}` }}>
+            {/* Hero card — pleine largeur sur mobile */}
+            <div style={{ background:`linear-gradient(135deg,${T.hero},${T.card})`, borderRadius: mobile ? 0 : 18, padding: desktop ? 24 : mobile ? "16px 16px 16px" : 16, marginBottom: mobile ? 0 : 14, border: mobile ? "none" : `1px solid ${T.border2}`, borderBottom: mobile ? `1px solid ${T.border2}` : undefined }}>
               <div style={{ fontSize:11, color:T.sub, marginBottom:4 }}>{isToday ? "Chiffre d'affaires aujourd'hui" : "Chiffre d'affaires"}</div>
               <div style={{ fontSize: desktop ? 40 : 34, fontWeight:900, color:"#00C896", letterSpacing:-1 }}>{fF(totalCA)}</div>
               <div style={{ display:"flex", gap:24, marginTop:12, flexWrap:"wrap" }}>
@@ -578,14 +596,14 @@ export default function MySomme() {
             </div>
 
             {/* Grille stats */}
-            <div style={{ display:"grid", gridTemplateColumns: desktop ? "repeat(4,1fr)" : "repeat(2,1fr)", gap:10, marginBottom:14 }}>
+            <div style={{ display:"grid", gridTemplateColumns: desktop ? "repeat(4,1fr)" : "repeat(2,1fr)", gap: mobile ? 1 : 10, marginBottom: mobile ? 0 : 14, borderTop: mobile ? `1px solid ${T.border}` : "none" }}>
               {[
                 { label:"Dépôts",   value:sum(t=>t.type==="depot"),   c:com(t=>t.type==="depot"),   icon:"⬇️", color:"#00C896" },
                 { label:"Retraits", value:sum(t=>t.type==="retrait"), c:com(t=>t.type==="retrait"), icon:"⬆️", color:"#4F8EF7" },
                 { label:"Forfaits", value:sum(t=>t.type==="forfait"), c:com(t=>t.type==="forfait"), icon:"📶", color:"#FFB800" },
                 { label:"Commission totale", value:totalCom, c:null, icon:"💰", color:"#E63946" },
               ].map((s,i) => (
-                <div key={i} style={{ background:T.card, borderRadius:14, padding: desktop ? 18 : 14, border:`1px solid ${s.color}22` }}>
+                <div key={i} style={{ background:T.card, borderRadius: mobile ? 0 : 14, padding: desktop ? 18 : 14, border: mobile ? "none" : `1px solid ${s.color}22`, borderRight: mobile && i%2===0 ? `1px solid ${T.border}` : "none", borderBottom: mobile ? `1px solid ${T.border}` : "none" }}>
                   <div style={{ fontSize:22 }}>{s.icon}</div>
                   <div style={{ fontSize: desktop ? 20 : 18, fontWeight:900, color:s.color, marginTop:6 }}>{fF(s.value)}</div>
                   {s.c !== null && <div style={{ fontSize:10, color:T.sub, marginTop:2 }}>comm. {fF(s.c)}</div>}
@@ -595,8 +613,8 @@ export default function MySomme() {
             </div>
 
             {/* Par opérateur */}
-            <div style={{ background:T.card, borderRadius:16, padding: desktop ? 20 : 15, marginBottom:14, border:`1px solid ${T.border}` }}>
-              <div style={{ fontWeight:800, fontSize:14, marginBottom:14 }}>Par opérateur</div>
+            <div style={{ background:T.card, borderRadius: mobile ? 0 : 16, padding: desktop ? 20 : 15, marginBottom: mobile ? 0 : 14, border: mobile ? "none" : `1px solid ${T.border}`, borderBottom: mobile ? `1px solid ${T.border2}` : "none" }}>
+              <div style={{ fontWeight:800, fontSize:14, marginBottom:14 }}>{mobile ? <span style={{padding:"0 2px"}}>Par opérateur</span> : "Par opérateur"}</div>
               {OPERATORS.map((op,i) => {
                 const o = txs.filter(t => t.operateur === op);
                 return (
@@ -613,12 +631,12 @@ export default function MySomme() {
             </div>
 
             {/* Bouton WhatsApp */}
-            <button onClick={shareReport} style={{ width:"100%", padding:15, borderRadius:14, background:"linear-gradient(135deg,#25D366,#128C7E)", border:"none", color:"#fff", fontWeight:800, fontSize:14, cursor:"pointer", marginBottom:14, display:"flex", alignItems:"center", justifyContent:"center", gap:10 }}>
+            <button onClick={shareReport} style={{ width:"100%", padding:15, borderRadius: mobile ? 0 : 14, background:"linear-gradient(135deg,#25D366,#128C7E)", border:"none", color:"#fff", fontWeight:800, fontSize:14, cursor:"pointer", marginBottom: mobile ? 0 : 14, display:"flex", alignItems:"center", justifyContent:"center", gap:10, borderBottom: mobile ? `1px solid #128C7E80` : "none" }}>
               <span style={{ fontSize:20 }}>📤</span> Envoyer le point du jour sur WhatsApp
             </button>
 
             {/* Dernières opérations */}
-            <div style={{ background:T.card, borderRadius:16, padding: desktop ? 20 : 15, border:`1px solid ${T.border}` }}>
+            <div style={{ background:T.card, borderRadius: mobile ? 0 : 16, padding: desktop ? 20 : 15, border: mobile ? "none" : `1px solid ${T.border}`, borderTop: mobile ? `1px solid ${T.border2}` : "none" }}>
               <div style={{ fontWeight:800, fontSize:14, marginBottom:14 }}>Dernières opérations</div>
               {loading && <div style={{ textAlign:"center", color:T.faint, padding:"24px 0", fontSize:13 }}>⏳ Chargement…</div>}
               {!loading && txs.length === 0 && <div style={{ textAlign:"center", color:T.faint, padding:"32px 0", fontSize:13 }}>{isToday ? "Aucune opération · Appuie sur ⬇️ ⬆️ ou 📶" : "Aucune opération ce jour"}</div>}
@@ -653,7 +671,7 @@ export default function MySomme() {
 
           {/* ══ STATS ══ */}
           {tab === "stats" && (
-            <div>
+            <div style={{ padding: mobile ? "14px 14px 0" : 0 }}>
               <div style={{ fontWeight:900, fontSize:18, marginBottom:16 }}>📊 Statistiques</div>
               <div style={{ background:"linear-gradient(135deg,#1A2810,#1A2030)", borderRadius:16, padding:desktop?20:16, marginBottom:14, border:"1px solid #00C89630" }}>
                 <div style={{ fontSize:11, color:"#4A7050", marginBottom:4 }}>💰 Commission {isToday?"du jour":"ce jour"}</div>
@@ -688,7 +706,7 @@ export default function MySomme() {
 
           {/* ══ HISTORIQUE ══ */}
           {tab === "historique" && (
-            <div>
+            <div style={{ padding: mobile ? "14px 12px 0" : 0 }}>
               <div style={{ fontWeight:900, fontSize:18, marginBottom:16 }}>🗂️ Historique</div>
               {loading && <div style={{ textAlign:"center", color:T.faint, padding:"48px 0" }}>⏳ Chargement…</div>}
               {!loading && txs.length === 0 && <div style={{ textAlign:"center", color:T.faint, padding:"56px 0", fontSize:14 }}>Aucune opération {isToday?"enregistrée":"ce jour"}</div>}
@@ -715,7 +733,7 @@ export default function MySomme() {
 
           {/* ══ PROFIL ══ */}
           {tab === "profil" && (
-            <div>
+            <div style={{ padding: mobile ? "14px 12px 0" : 0 }}>
               <div style={{ fontWeight:900, fontSize:18, marginBottom:16 }}>👤 Mon Profil</div>
               <div style={{ background:T.card, borderRadius:16, padding: desktop ? 24 : 18, marginBottom:14, border:`1px solid ${T.border}` }}>
                 <div style={{ display:"flex", alignItems:"center", gap:16, marginBottom:20 }}>
