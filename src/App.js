@@ -257,6 +257,7 @@ export default function MySomme() {
     setSaving(true);
     const tx = { type:modal, operateur:form.operateur, montant:Number(form.montant), commission:calcCom(modal,form.operateur,Number(form.montant)), client:form.client||"Client", telephone:form.telephone||null, forfait:form.forfait||null, heure:new Date().toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}), user_id:agent.telephone };
     const saved = await saveTx(tx);
+    try{ localStorage.setItem("ms_last_tx", JSON.stringify(tx)); }catch{}
     setTxs(p=>[saved||{...tx,id:Date.now()},...p]);
     setSaving(false); setModal(null); setForm({});
     setFlash(modal); setTimeout(()=>setFlash(null),2200);
@@ -288,7 +289,7 @@ export default function MySomme() {
   if (locked)  return <PinPad title="Bon retour 👋" subtitle={`Continu ${agent.nom}`} onSubmit={handleUnlock} T={T} error={pinErr} />;
 
   return (
-    <div style={{ background:T.bg, minHeight:"100vh", width:"100vw", maxWidth:"100%", color:T.text, fontFamily:"'Segoe UI', sans-serif", position:"relative", overflowX:"hidden", transition:"background 0.3s" }}>
+    <div style={{ background:T.bg, minHeight:"100vh", width:"100%", maxWidth:"1200px", margin:"0 auto", padding:"0 10px", color:T.text, fontFamily:"'Segoe UI', sans-serif", position:"relative", overflowX:"hidden", transition:"background 0.3s" }}>
 
       {/* FLASH */}
       {flash && (
@@ -310,6 +311,25 @@ export default function MySomme() {
           <button onClick={()=>setDark(d=>!d)} style={{ background:dark?"#22263A":"#E4E8F5", border:"none", borderRadius:20, padding:"5px 9px", cursor:"pointer", fontSize:15 }}>{dark?"☀️":"🌙"}</button>
           <button onClick={()=>setShowCal(true)} style={{ background:dark?"#22263A":"#E4E8F5", border:"none", borderRadius:9, padding:"6px 9px", cursor:"pointer", fontSize:15 }}>📅</button>
           <button onClick={shareReport} style={{ background:"#00C89618", border:"1px solid #00C89630", borderRadius:9, padding:"6px 9px", cursor:"pointer", fontSize:15 }} title="Envoyer le point du jour">📤</button>
+          <button
+            onClick={()=>{
+              localStorage.removeItem("ms_agent")
+              setAgent(null)
+              setLocked(false)
+            }}
+            style={{
+              background:"#E63946",
+              border:"none",
+              borderRadius:9,
+              padding:"6px 10px",
+              cursor:"pointer",
+              fontSize:12,
+              color:"#fff",
+              fontWeight:700
+            }}
+          >
+            🚪 Déconnexion
+          </button>
           <div style={{ background:loading?"#FFB80018":"#00C89618", color:loading?"#FFB800":"#00C896", borderRadius:20, padding:"3px 9px", fontSize:10, fontWeight:700, border:`1px solid ${loading?"#FFB80030":"#00C89630"}` }}>
             {loading?"⏳":"🟢"}
           </div>
@@ -338,7 +358,7 @@ export default function MySomme() {
             </div>
           </div>
 
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:12 }}>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))", gap:10, marginBottom:12 }}>
             {[
               {label:"Dépôts",   value:sum(t=>t.type==="depot"),   c:com(t=>t.type==="depot"),   icon:"⬇️", color:"#00C896"},
               {label:"Retraits", value:sum(t=>t.type==="retrait"), c:com(t=>t.type==="retrait"), icon:"⬆️", color:"#4F8EF7"},
