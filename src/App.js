@@ -271,7 +271,18 @@ function PinPad({ title, subtitle, onSubmit, T, error, blocked }) {
   };
   return (
     <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", minHeight:"100vh", padding:24, background:T.bg }}>
-      <div style={{ width:54, height:54, background:"linear-gradient(135deg,#00C896,#00A5FF)", borderRadius:16, display:"flex", alignItems:"center", justifyContent:"center", fontWeight:900, fontSize:20, color:"#fff", marginBottom:22, boxShadow:"0 6px 24px #00C89640" }}>MS</div>
+      <svg width="54" height="54" viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg" style={{marginBottom:22,filter:"drop-shadow(0 6px 24px #00C89640)"}}>
+  <rect x="4" y="4" width="44" height="44" rx="14" fill="url(#msgrad_pin)"/>
+  <path d="M12 36 L12 18 L26 29 L40 18 L40 36" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <circle cx="26" cy="40" r="3" fill="white" opacity="0.95"/>
+  <defs>
+    <linearGradient id="msgrad_pin" x1="0" y1="0" x2="52" y2="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#00C896"/>
+      <stop offset="50%" stop-color="#00A5FF"/>
+      <stop offset="100%" stop-color="#7B2FBE"/>
+    </linearGradient>
+  </defs>
+</svg>
       <div style={{ fontWeight:900, fontSize:24, marginBottom:6, textAlign:"center", color:T.text }}>{title}</div>
       <div style={{ fontSize:13, color:T.sub, marginBottom:36, textAlign:"center" }}>{subtitle}</div>
       <div style={{ display:"flex", gap:18, marginBottom:36 }}>
@@ -409,8 +420,19 @@ function Inscription({ onDone, T }) {
       <div style={{ width:"100%", maxWidth:400 }}>
         {/* Logo */}
         <div style={{ display:"flex", flexDirection:"column", alignItems:"center", marginBottom:30 }}>
-          <div style={{ width:58, height:58, background:"linear-gradient(135deg,#00C896,#00A5FF)", borderRadius:17, display:"flex", alignItems:"center", justifyContent:"center", fontWeight:900, fontSize:22, color:"#fff", marginBottom:14, boxShadow:"0 6px 26px #00C89640" }}>MS</div>
-          <div style={{ fontWeight:900, fontSize:28, marginBottom:4, color:T.text }}>My Somme</div>
+          <svg width="58" height="58" viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg" style={{marginBottom:14,filter:"drop-shadow(0 6px 26px #00C89640)"}}>
+  <rect x="4" y="4" width="44" height="44" rx="14" fill="url(#msgrad_ins)"/>
+  <path d="M12 36 L12 18 L26 29 L40 18 L40 36" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <circle cx="26" cy="40" r="3" fill="white" opacity="0.95"/>
+  <defs>
+    <linearGradient id="msgrad_ins" x1="0" y1="0" x2="52" y2="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#00C896"/>
+      <stop offset="50%" stop-color="#00A5FF"/>
+      <stop offset="100%" stop-color="#7B2FBE"/>
+    </linearGradient>
+  </defs>
+</svg>
+          <div style={{ fontWeight:900, fontSize:28, marginBottom:4, color:T.text }}>Mon Point</div>
           <div style={{ fontSize:13, color:T.sub, textAlign:"center" }}>
             {mode==="register" ? "Ton cahier MoMo numérique 🇧🇯" : "Reconnecte-toi à ton espace"}
           </div>
@@ -552,13 +574,24 @@ function PaymentWall({ agent, T, onPaid, onBack }) {
           </div>
         )}
 
-        <div style={{ width:64, height:64, background:"linear-gradient(135deg,#00C896,#00A5FF)", borderRadius:18, display:"flex", alignItems:"center", justifyContent:"center", fontWeight:900, fontSize:24, color:"#fff", margin:"0 auto 20px", boxShadow:"0 8px 30px #00C89640" }}>MS</div>
+        <svg width="64" height="64" viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg" style={{margin:"0 auto 20px",display:"block",filter:"drop-shadow(0 8px 30px #00C89640)"}}>
+  <rect x="4" y="4" width="44" height="44" rx="14" fill="url(#msgrad_pay)"/>
+  <path d="M12 36 L12 18 L26 29 L40 18 L40 36" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <circle cx="26" cy="40" r="3" fill="white" opacity="0.95"/>
+  <defs>
+    <linearGradient id="msgrad_pay" x1="0" y1="0" x2="52" y2="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#00C896"/>
+      <stop offset="50%" stop-color="#00A5FF"/>
+      <stop offset="100%" stop-color="#7B2FBE"/>
+    </linearGradient>
+  </defs>
+</svg>
 
         <div style={{ background:"#E6394612", border:"2px solid #E6394640", borderRadius:18, padding:"22px 20px", marginBottom:24 }}>
           <div style={{ fontSize:36, marginBottom:10 }}>⏰</div>
           <div style={{ fontWeight:900, fontSize:20, color:"#E63946", marginBottom:8 }}>Période d'essai terminée</div>
           <div style={{ fontSize:13, color:T.sub, lineHeight:1.6 }}>
-            Tes données sont en sécurité.<br/>Abonne-toi pour continuer à utiliser My Somme.
+            Tes données sont en sécurité.<br/>Abonne-toi pour continuer à utiliser Mon Point.
           </div>
         </div>
 
@@ -613,7 +646,7 @@ function PaymentWall({ agent, T, onPaid, onBack }) {
 }
 
 // ─── APP PRINCIPALE ───────────────────────────────────────────────────────────
-export default function MySomme() {
+export default function MonPoint() {
   const [dark,          setDark]          = useState(true);
   const [agent,         setAgent]         = useState(null);
   const [locked,        setLocked]        = useState(false);
@@ -783,7 +816,7 @@ export default function MySomme() {
 
   function shareReport() {
     const dateLabel = new Date(selectedDate).toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
-    const text = `📊 *Point du jour — My Somme*\n📅 ${dateLabel}\n👤 Agent : ${agent.nom}\n\n⬇️ Dépôts : ${fF(sum(t=>t.type==="depot"))}\n⬆️ Retraits : ${fF(sum(t=>t.type==="retrait"))}\n\n💰 *CA Total : ${fF(totalCA)}*\n✅ *Commission : ${fF(totalCom)}*\n\n_Généré par My Somme_`;
+    const text = `📊 *Point du jour — Mon Point*\n📅 ${dateLabel}\n👤 Agent : ${agent.nom}\n\n⬇️ Dépôts : ${fF(sum(t=>t.type==="depot"))}\n⬆️ Retraits : ${fF(sum(t=>t.type==="retrait"))}\n\n💰 *CA Total : ${fF(totalCA)}*\n✅ *Commission : ${fF(totalCom)}*\n\n_Généré par Mon Point_`;
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
   }
 
@@ -853,9 +886,20 @@ export default function MySomme() {
       {desktop && (
         <aside style={{ position:"fixed", top:0, left:0, width:240, height:"100vh", background:T.sidebar, borderRight:`1px solid ${T.border}`, display:"flex", flexDirection:"column", zIndex:100 }}>
           <div style={{ display:"flex", alignItems:"center", gap:12, padding:"22px 20px 20px", borderBottom:`1px solid ${T.border}` }}>
-            <div style={{ width:42, height:42, background:"linear-gradient(135deg,#00C896,#00A5FF)", borderRadius:12, display:"flex", alignItems:"center", justifyContent:"center", fontWeight:900, fontSize:16, color:"#fff", flexShrink:0 }}>MS</div>
+            <svg width="42" height="42" viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg" style={{flexShrink:0}}>
+  <rect x="4" y="4" width="44" height="44" rx="14" fill="url(#msgrad_sb)"/>
+  <path d="M12 36 L12 18 L26 29 L40 18 L40 36" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <circle cx="26" cy="40" r="3" fill="white" opacity="0.95"/>
+  <defs>
+    <linearGradient id="msgrad_sb" x1="0" y1="0" x2="52" y2="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#00C896"/>
+      <stop offset="50%" stop-color="#00A5FF"/>
+      <stop offset="100%" stop-color="#7B2FBE"/>
+    </linearGradient>
+  </defs>
+</svg>
             <div>
-              <div style={{ fontWeight:900, fontSize:15 }}>My Somme</div>
+              <div style={{ fontWeight:900, fontSize:15 }}>Mon Point</div>
               <div style={{ fontSize:10, color:T.sub }}>Agent mobile money 🇧🇯</div>
             </div>
           </div>
@@ -912,9 +956,20 @@ export default function MySomme() {
       {!desktop && (
         <header style={{ background:T.card, padding:tablet?"14px 22px":"12px 16px", borderBottom:`1px solid ${T.border}`, display:"flex", justifyContent:"space-between", alignItems:"center", position:"sticky", top:0, zIndex:50, width:"100%" }}>
           <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-            <div style={{ width:38, height:38, background:"linear-gradient(135deg,#00C896,#00A5FF)", borderRadius:11, display:"flex", alignItems:"center", justifyContent:"center", fontWeight:900, fontSize:14, color:"#fff" }}>MS</div>
+            <svg width="38" height="38" viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect x="4" y="4" width="44" height="44" rx="14" fill="url(#msgrad2)"/>
+  <path d="M12 36 L12 18 L26 29 L40 18 L40 36" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <circle cx="26" cy="40" r="3" fill="white" opacity="0.95"/>
+  <defs>
+    <linearGradient id="msgrad2" x1="0" y1="0" x2="52" y2="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#00C896"/>
+      <stop offset="50%" stop-color="#00A5FF"/>
+      <stop offset="100%" stop-color="#7B2FBE"/>
+    </linearGradient>
+  </defs>
+</svg>
             <div>
-              <div style={{ fontWeight:900, fontSize:16 }}>My Somme</div>
+              <div style={{ fontWeight:900, fontSize:16 }}>Mon Point</div>
               <div style={{ fontSize:10, color:T.sub }}>{formatDateLabel(selectedDate)}</div>
             </div>
           </div>
@@ -1130,7 +1185,7 @@ export default function MySomme() {
               {/* Infos agent */}
               <div style={{ background:T.card, borderRadius:18, padding:desktop?26:20, marginBottom:14, border:`1px solid ${T.border}` }}>
                 <div style={{ display:"flex", alignItems:"center", gap:16, marginBottom:20 }}>
-                  <div style={{ width:58, height:58, background:"linear-gradient(135deg,#00C896,#00A5FF)", borderRadius:17, display:"flex", alignItems:"center", justifyContent:"center", fontWeight:900, fontSize:24, color:"#fff", flexShrink:0 }}>
+                  <div style={{ width:58, height:58, background:"linear-gradient(135deg,#00C896,#00A5FF)", borderRadius:17, display:"flex", alignItems:"center", justifyContent:"center", fontWeight:900, fontSize:24, color:"#fff", flexShrink:0, boxShadow:"0 4px 16px #00C89640" }}>
                     {agent.nom?.charAt(0).toUpperCase()}
                   </div>
                   <div>
@@ -1208,7 +1263,7 @@ export default function MySomme() {
                     📋 Copier
                   </button>
                 </div>
-                <button onClick={()=>{ const url = getReferralLink(agent.telephone); const text = `📱 J'utilise My Somme pour gérer mon point MoMo — c'est trop pratique ! Essaie gratuitement : ${url}`; window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank"); }}
+                <button onClick={()=>{ const url = getReferralLink(agent.telephone); const text = `📱 J'utilise Mon Point pour gérer mon point MoMo — c'est trop pratique ! Essaie gratuitement : ${url}`; window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank"); }}
                   style={{ width:"100%", marginTop:10, padding:12, borderRadius:12, background:"linear-gradient(135deg,#25D366,#128C7E)", border:"none", color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
                   <span>📤</span> Partager via WhatsApp
                 </button>
