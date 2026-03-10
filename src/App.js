@@ -5,9 +5,6 @@ const SUPA_URL = "https://xwpepotkvjendslfgpza.supabase.co";
 const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh3cGVwb3RrdmplbmRzbGZncHphIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMwNTIxOTMsImV4cCI6MjA4ODYyODE5M30.DzgVA46ldUCX-CGE-Byk3QZkQSRMr_HvVXhJl8ZT9H0";
 const H = { "apikey": SUPA_KEY, "Authorization": `Bearer ${SUPA_KEY}`, "Content-Type": "application/json", "Prefer": "return=representation" };
 
-// ─── FEDAPAY — remplace pk_live_... par ta vraie clé publique FedaPay ─────────
-const FEDAPAY_PUBLIC_KEY = "pk_live_vRdpnDaTzespWJs833LKBaov";
-
 // ─── CACHE LOCAL ──────────────────────────────────────────────────────────────
 function lsGet(k)    { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : null; } catch { return null; } }
 function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
@@ -467,97 +464,46 @@ function Inscription({ onDone, T }) {
 }
 
 // ─── COMPOSANT MUR DE PAIEMENT ────────────────────────────────────────────────
+const FEDAPAY_PAGE = "https://me.fedapay.com/nIcV-Te5";
+
 function PaymentWall({ agent, T, onPaid, onBack }) {
-  const [paying,       setPaying]       = useState(false);
-  const [done,         setDone]         = useState(false);
-  const [scriptReady,  setScriptReady]  = useState(false);
+  const [checking, setChecking] = useState(false);
 
+  // Quand l'agent revient sur l'app après paiement, on vérifie dans Supabase
   useEffect(() => {
-    // Charger le script FedaPay et attendre qu'il soit prêt
-    if (window.FedaPay) { setScriptReady(true); return; }
-    const existing = document.getElementById("fedapay-script");
-    if (existing) {
-      existing.onload = () => setScriptReady(true);
-      return;
-    }
-    const script = document.createElement("script");
-    script.id  = "fedapay-script";
-    script.src = "https://cdn.fedapay.com/checkout.js?v=1.1.7";
-    script.async = true;
-    script.onload  = () => setScriptReady(true);
-    script.onerror = () => console.error("Erreur chargement FedaPay");
-    document.head.appendChild(script);
-  }, []);
+    const onFocus = async () => {
+      setChecking(true);
+      // Recharger les données agent depuis Supabase
+      const fresh = await fetchAgent(agent.telephone);
+      if (fresh && fresh.subscription_status === "active") {
+        lsSet("ms_agent", fresh);
+        onPaid(fresh);
+      }
+      setChecking(false);
+    };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [agent]);
 
-  async function lancerPaiement() {
-    if (!scriptReady || !window.FedaPay) {
-      alert("Chargement en cours… Réessaie dans 2 secondes.");
-      return;
-    }
-    setPaying(true);
-    try {
-      window.FedaPay.init({
-        public_key: FEDAPAY_PUBLIC_KEY,
-        transaction: {
-          amount: 1999,
-          description: "Abonnement My Somme 1 mois",
-          currency: { iso: "XOF" }
-        },
-        customer: {
-          email: agent.email || "client@mysomme.app",
-          phone_number: {
-            number: agent.telephone,
-            country: "bj"
-          }
-        },
-        onComplete: async function(resp) {
-          setPaying(false);
-          const status = resp?.transaction?.status;
-          if (status === "approved" || status === "completed") {
-            await activerAbonnement(agent.telephone, String(resp?.transaction?.id || "ok"));
-            const updated = {
-              ...agent,
-              subscription_status: "active",
-              subscription_expires_at: new Date(Date.now()+30*24*60*60*1000).toISOString()
-            };
-            lsSet("ms_agent", updated);
-            setDone(true);
-            setTimeout(() => onPaid(updated), 1800);
-          } else {
-            setPaying(false);
-          }
-        }
-      }).open();
-    } catch(e) {
-      console.error("FedaPay error:", e);
-      setPaying(false);
-      alert("Erreur : " + e.message);
-    }
+  function ouvrirPaiement() {
+    // Ouvrir la page FedaPay dans un nouvel onglet
+    window.open(FEDAPAY_PAGE, "_blank");
   }
-
-  if (done) return (
-    <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", minHeight:"100vh", background:T.bg, padding:24, textAlign:"center" }}>
-      <div style={{ fontSize:64, marginBottom:20 }}>🎉</div>
-      <div style={{ fontWeight:900, fontSize:24, color:"#00C896", marginBottom:8 }}>Paiement confirmé !</div>
-      <div style={{ fontSize:14, color:T.sub }}>30 jours d'accès activés. Chargement...</div>
-    </div>
-  );
 
   return (
     <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", minHeight:"100vh", background:T.bg, padding:24 }}>
       <div style={{ width:"100%", maxWidth:380, textAlign:"center" }}>
-        {/* Bouton retour si pas expiré */}
+
         {onBack && (
-          <div style={{ width:"100%", marginBottom:16 }}>
-            <button onClick={onBack} style={{ background:"transparent", border:"none", color:T.sub, fontSize:13, cursor:"pointer", display:"flex", alignItems:"center", gap:6, padding:0 }}>
+          <div style={{ width:"100%", marginBottom:16, textAlign:"left" }}>
+            <button onClick={onBack} style={{ background:"transparent", border:"none", color:T.sub, fontSize:13, cursor:"pointer", display:"flex", alignItems:"center", gap:6 }}>
               ← Retour
             </button>
           </div>
         )}
-        {/* Logo */}
+
         <div style={{ width:64, height:64, background:"linear-gradient(135deg,#00C896,#00A5FF)", borderRadius:18, display:"flex", alignItems:"center", justifyContent:"center", fontWeight:900, fontSize:24, color:"#fff", margin:"0 auto 20px", boxShadow:"0 8px 30px #00C89640" }}>MS</div>
 
-        {/* Message expiration */}
         <div style={{ background:"#E6394612", border:"2px solid #E6394640", borderRadius:18, padding:"22px 20px", marginBottom:24 }}>
           <div style={{ fontSize:36, marginBottom:10 }}>⏰</div>
           <div style={{ fontWeight:900, fontSize:20, color:"#E63946", marginBottom:8 }}>Période d'essai terminée</div>
@@ -566,37 +512,51 @@ function PaymentWall({ agent, T, onPaid, onBack }) {
           </div>
         </div>
 
-        {/* Offre */}
-        <div style={{ background:`linear-gradient(135deg,${T.hero},${T.card})`, border:`2px solid #00C89640`, borderRadius:18, padding:"22px 20px", marginBottom:22 }}>
+        <div style={{ background:`linear-gradient(135deg,${T.hero},${T.card})`, border:"2px solid #00C89640", borderRadius:18, padding:"22px 20px", marginBottom:22 }}>
           <div style={{ fontSize:11, color:T.sub, marginBottom:6, letterSpacing:1, fontWeight:700 }}>ABONNEMENT MENSUEL</div>
           <div style={{ fontSize:46, fontWeight:900, color:"#00C896", letterSpacing:-2, marginBottom:4 }}>1 999 F</div>
           <div style={{ fontSize:12, color:T.sub, marginBottom:16 }}>par mois · 30 jours d'accès complet</div>
-          <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-            {["✅ Tous tes retraits et dépôts", "✅ Statistiques et historique complet", "✅ Calcul automatique des commissions", "✅ Rapport WhatsApp"].map(f=>(
-              <div key={f} style={{ fontSize:13, color:T.text, textAlign:"left" }}>{f}</div>
-            ))}
-          </div>
+          {["✅ Tous tes retraits et dépôts","✅ Statistiques et historique complet","✅ Calcul automatique des commissions","✅ Rapport WhatsApp"].map(f=>(
+            <div key={f} style={{ fontSize:13, color:T.text, textAlign:"left", marginBottom:6 }}>{f}</div>
+          ))}
         </div>
 
-        {/* Bouton payer */}
-        <button onClick={lancerPaiement} disabled={paying || !scriptReady}
-          style={{ width:"100%", padding:18, borderRadius:16, background:(paying||!scriptReady)?"#1A1D2E":"linear-gradient(135deg,#00C896,#00A5FF)", border:"none", color:(paying||!scriptReady)?T.sub:"#fff", fontWeight:900, fontSize:17, cursor:(paying||!scriptReady)?"not-allowed":"pointer", boxShadow:(paying||!scriptReady)?"none":"0 6px 24px #00C89640", marginBottom:14 }}>
-          {!scriptReady ? "⏳ Chargement..." : paying ? "⏳ Ouverture..." : "💳 Payer 1 999 F et continuer"}
+        <button onClick={ouvrirPaiement}
+          style={{ width:"100%", padding:18, borderRadius:16, background:"linear-gradient(135deg,#00C896,#00A5FF)", border:"none", color:"#fff", fontWeight:900, fontSize:17, cursor:"pointer", boxShadow:"0 6px 24px #00C89640", marginBottom:12 }}>
+          💳 Payer 1 999 F et continuer →
         </button>
 
+        {checking
+          ? <div style={{ fontSize:13, color:"#00C896", fontWeight:700, padding:"12px 0" }}>⏳ Vérification du paiement...</div>
+          : <button onClick={async () => {
+              setChecking(true);
+              const fresh = await fetchAgent(agent.telephone);
+              if (fresh && fresh.subscription_status === "active") {
+                lsSet("ms_agent", fresh);
+                onPaid(fresh);
+              } else {
+                alert("Paiement non encore confirmé. Réessaie dans quelques secondes.");
+              }
+              setChecking(false);
+            }}
+            style={{ width:"100%", padding:13, borderRadius:13, background:"transparent", border:`1px solid ${T.border}`, color:T.sub, fontSize:13, cursor:"pointer", marginBottom:16 }}>
+            🔄 J'ai déjà payé — Vérifier mon accès
+          </button>
+        }
+
         <div style={{ fontSize:11, color:T.sub, lineHeight:1.6 }}>
-          Paiement sécurisé via FedaPay<br/>MTN MoMo · MOOV Money · Celtiis Cash
+          Paiement sécurisé via FedaPay 🔒<br/>MTN MoMo · MOOV Money · Celtiis Cash
         </div>
 
-        {/* Lien parrainage — rappel */}
         <div style={{ marginTop:20, background:"#FFB80010", border:"1px solid #FFB80030", borderRadius:14, padding:"14px 16px" }}>
-          <div style={{ fontSize:12, color:"#FFB800", fontWeight:700, marginBottom:6 }}>💡 Invite des amis — gagne des jours gratuits</div>
-          <div style={{ fontSize:11, color:T.sub }}>Partage ton lien. Dès qu'un ami s'inscrit, tu gagnes <strong style={{color:"#FFB800"}}>+16 jours</strong> gratuits avant de payer.</div>
-          <button onClick={()=>{navigator.clipboard?.writeText(getReferralLink(agent.telephone)); alert("Lien copié !");}}
-            style={{ marginTop:10, width:"100%", padding:"9px 0", borderRadius:10, background:"#FFB80020", border:"1px solid #FFB80050", color:"#FFB800", fontWeight:700, fontSize:12, cursor:"pointer" }}>
+          <div style={{ fontSize:12, color:"#FFB800", fontWeight:700, marginBottom:6 }}>💡 Pas encore prêt à payer ?</div>
+          <div style={{ fontSize:11, color:T.sub, marginBottom:10 }}>Invite 1 ami avec ton lien → gagne <strong style={{color:"#FFB800"}}>+16 jours gratuits</strong> avant de payer.</div>
+          <button onClick={()=>{ navigator.clipboard?.writeText(`${window.location.origin}${window.location.pathname}?ref=${agent.telephone}`); alert("Lien copié !"); }}
+            style={{ width:"100%", padding:"9px 0", borderRadius:10, background:"#FFB80020", border:"1px solid #FFB80050", color:"#FFB800", fontWeight:700, fontSize:12, cursor:"pointer" }}>
             📋 Copier mon lien de parrainage
           </button>
         </div>
+
       </div>
     </div>
   );
