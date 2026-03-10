@@ -128,7 +128,24 @@ const JOURS      = ["Dim","Lun","Mar","Mer","Jeu","Ven","Sam"];
 const MOIS_FR    = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
 
 const fF       = n => Number(n||0).toLocaleString("fr-FR") + " F";
-const todayStr = () => new Date().toISOString().slice(0,10);
+// ⚠️ IMPORTANT : utiliser l'heure LOCALE (Bénin = UTC+1), pas UTC
+function todayStr() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,"0");
+  const day = String(d.getDate()).padStart(2,"0");
+  return `${y}-${m}-${day}`;
+}
+function nowISO() {
+  // Produit un ISO string avec offset local pour Supabase
+  const d = new Date();
+  const tzOff = -d.getTimezoneOffset();
+  const sign  = tzOff >= 0 ? "+" : "-";
+  const hh    = String(Math.floor(Math.abs(tzOff)/60)).padStart(2,"0");
+  const mm    = String(Math.abs(tzOff)%60).padStart(2,"0");
+  const pad   = n => String(n).padStart(2,"0");
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}${sign}${hh}:${mm}`;
+}
 
 // ─── SALUTATION DYNAMIQUE ─────────────────────────────────────────────────────
 function getSalutation(nom) {
@@ -228,7 +245,7 @@ function Inscription({ onDone, T }) {
     else if (step === 3) {
       if (p !== pin) { setError("Les 2 codes ne correspondent pas. Réessaie."); return; }
       setLoading(true);
-      const agent = { nom:form.nom, telephone:form.telephone, reseau:form.reseau, pin:p, created_at:new Date().toISOString(), trial_start:new Date().toISOString() };
+      const agent = { nom:form.nom, telephone:form.telephone, reseau:form.reseau, pin:p, created_at:nowISO(), trial_start:nowISO() };
       const saved = await saveAgent(agent);
       lsSet("ms_agent", saved || agent);
       onDone(saved || agent);
@@ -364,6 +381,23 @@ export default function MySomme() {
     document.body.style.background = dark ? "#080A11" : "#F0F2F8";
   }, [dark]);
 
+  // ── Protection bouton RETOUR navigateur — empêche de quitter l'app ──────────
+  useEffect(() => {
+    // Pousser un état initial dans l'historique
+    window.history.pushState({ ms: true }, "");
+    const onPop = (e) => {
+      // Remettre un état pour bloquer la navigation
+      window.history.pushState({ ms: true }, "");
+      // Si un modal est ouvert, le fermer
+      setModal(null);
+      setShowCal(false);
+      setConfirm(null);
+      setConfirmLogout(false);
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
   // ── Charger agent ───────────────────────────────────────────────────────────
   useEffect(() => {
     const saved = lsGet("ms_agent");
@@ -429,7 +463,7 @@ export default function MySomme() {
       commission: calcCom(modal, form.operateur, Number(form.montant)),
       client: form.client || "Client", telephone: form.telephone || null,
       forfait: null, heure: new Date().toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}),
-      user_id: agent.telephone, localId, created_at: new Date().toISOString(),
+      user_id: agent.telephone, localId, created_at: nowISO(),
     };
     const optimisticTx = { ...tx, id: localId };
     setTxs(p => [optimisticTx, ...p]);
@@ -728,7 +762,7 @@ export default function MySomme() {
               <div style={{ background:"linear-gradient(135deg,#1A2810,#1A2030)", borderRadius:18, padding: desktop?24:18, marginBottom:16, border:"1px solid #00C89630" }}>
                 <div style={{ fontSize:11, color:"#4A7050", marginBottom:4 }}>💰 Commission {isToday?"du jour":"ce jour"}</div>
                 <div style={{ fontSize: desktop?38:30, fontWeight:900, color:"#00C896" }}>{fF(totalCom)}</div>
-                <div style={{ fontSize:11, color:"#3A5040", marginTop:6 }}>Dépôt 0.5% · Retrait selon grille tarifaire officielle</div>
+                <div style={{ fontSize:11, color:"#3A5040", marginTop:6 }}>Retrait : frais fixes selon grille tarifaire officielle · Dépôt : aucune commission</div>
               </div>
               {["depot","retrait"].map(type => {
                 const tTxs = txs.filter(t => t.type === type);
@@ -745,7 +779,7 @@ export default function MySomme() {
                       const o = txs.filter(t => t.type===type && t.operateur===op);
                       return (
                         <div key={op} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"9px 0", borderBottom:i<2?`1px solid ${T.border}`:"none", fontSize:13 }}>
-                          <div><span style={{ color:OP_COLORS[op], fontWeight:700 }}>{op}</span><span style={{ color:T.faint, fontSize:11 }}> {o.length}x · {(COMMISSIONS[op][type]*100).toFixed(1)}%</span></div>
+                          <div><span style={{ color:OP_COLORS[op], fontWeight:700 }}>{op}</span><span style={{ color:T.faint, fontSize:11 }}> {o.length} opération{o.length>1?'s':''}</span></div>
                           <div><span style={{ fontWeight:700 }}>{fF(o.reduce((s,t)=>s+Number(t.montant),0))}</span><span style={{ color:T.sub, fontSize:11 }}> +{fF(o.reduce((s,t)=>s+Number(t.commission),0))}</span></div>
                         </div>
                       );
