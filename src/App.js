@@ -16,7 +16,8 @@ const pendKey = uid          => `ms_pend_${uid}`;
 // ─── API ──────────────────────────────────────────────────────────────────────
 async function fetchTxsByDate(dateStr, userId) {
   try {
-    const res = await fetch(`${SUPA_URL}/rest/v1/transactions?created_at=gte.${dateStr}T00:00:00&created_at=lt.${dateStr}T23:59:59&user_id=eq.${userId}&order=created_at.desc`, { headers: H });
+    // Utiliser la date locale avec offset +01:00 (Bénin UTC+1)
+    const res = await fetch(`${SUPA_URL}/rest/v1/transactions?created_at=gte.${dateStr}T00:00:00+01:00&created_at=lte.${dateStr}T23:59:59+01:00&user_id=eq.${userId}&order=created_at.desc`, { headers: H });
     if (res.ok) {
       const data = await res.json();
       lsSet(txKey(dateStr, userId), data);
@@ -29,9 +30,18 @@ async function fetchTxsByDate(dateStr, userId) {
 async function saveTxRemote(tx) {
   try {
     const res = await fetch(`${SUPA_URL}/rest/v1/transactions`, { method: "POST", headers: H, body: JSON.stringify(tx) });
-    if (res.ok) return (await res.json())[0];
-  } catch {}
-  return null;
+    if (res.ok) {
+      const data = await res.json();
+      return data[0] || null;
+    }
+    // Log l'erreur Supabase pour diagnostic
+    const err = await res.text();
+    console.error("Supabase save error:", res.status, err);
+    return null;
+  } catch(e) {
+    console.error("Network error:", e);
+    return null;
+  }
 }
 
 async function deleteTx(id) {
@@ -42,7 +52,7 @@ async function fetchActiveDays(year, month, userId) {
   try {
     const from = `${year}-${String(month).padStart(2,"0")}-01`;
     const to   = `${year}-${String(month).padStart(2,"0")}-31`;
-    const res  = await fetch(`${SUPA_URL}/rest/v1/transactions?created_at=gte.${from}T00:00:00&created_at=lte.${to}T23:59:59&user_id=eq.${userId}&select=created_at`, { headers: H });
+    const res  = await fetch(`${SUPA_URL}/rest/v1/transactions?created_at=gte.${from}T00:00:00+01:00&created_at=lte.${to}T23:59:59+01:00&user_id=eq.${userId}&select=created_at`, { headers: H });
     if (!res.ok) return [];
     const data = await res.json();
     return [...new Set(data.map(t => t.created_at.slice(0,10)))];
@@ -479,6 +489,8 @@ export default function MySomme() {
     lsSet(txKey(selectedDate, agent.telephone), [saved || optimisticTx, ...cached]);
     setSaving(false); setModal(null); setForm({});
     setFlash(modal); setTimeout(() => setFlash(null), 2200);
+    // Recharger depuis Supabase pour confirmer la sauvegarde
+    setTimeout(() => loadTxs(selectedDate), 1000);
   }
 
   async function removeTx(id) {
