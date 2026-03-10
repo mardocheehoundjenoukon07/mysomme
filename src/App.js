@@ -78,11 +78,45 @@ async function flushPending(userId) {
 }
 
 // ─── CONSTANTES ───────────────────────────────────────────────────────────────
-const COMMISSIONS = {
-  MTN:     { depot: 0.005, retrait: 0.015 },
-  MOOV:    { depot: 0.005, retrait: 0.015 },
-  Celtiis: { depot: 0.005, retrait: 0.01  },
-};
+
+// Grille tarifaire officielle — Frais de retrait client (FCFA)
+// Source : document officiel opérateurs Bénin
+const GRILLE_RETRAIT = [
+  { min: 100,       max: 500,       MTN: 50,   MOOV: 50,   Celtiis: 25   },
+  { min: 501,       max: 5000,      MTN: 125,  MOOV: 125,  Celtiis: 75   },
+  { min: 5001,      max: 10000,     MTN: 225,  MOOV: 225,  Celtiis: 150  },
+  { min: 10001,     max: 20000,     MTN: 375,  MOOV: 375,  Celtiis: 250  },
+  { min: 20001,     max: 50000,     MTN: 700,  MOOV: 700,  Celtiis: 500  },
+  { min: 50001,     max: 75000,     MTN: 1000, MOOV: 1000, Celtiis: 750  },
+  { min: 75001,     max: 100000,    MTN: 1000, MOOV: 1000, Celtiis: 1000 },
+  { min: 100001,    max: 200000,    MTN: 2000, MOOV: 2000, Celtiis: 2000 },
+  { min: 200001,    max: 300000,    MTN: 3000, MOOV: 3000, Celtiis: 3000 },
+  { min: 300001,    max: 500000,    MTN: 3500, MOOV: 3500, Celtiis: 4000 },
+  { min: 500001,    max: 750000,    MTN: 5000, MOOV: 5000, Celtiis: 5000 },
+  { min: 750001,    max: 1000000,   MTN: 6000, MOOV: 6000, Celtiis: 5000 },
+  { min: 1000001,   max: 1500000,   MTN: 8000, MOOV: 8000, Celtiis: 5000 },
+  { min: 1500001,   max: 2000000,   MTN: 9900, MOOV: 9900, Celtiis: 5000 },
+];
+
+// Commission retrait = montant FIXE selon la tranche (payé par le client à l'agent)
+// Commission dépôt  = 0 (aucune commission)
+function calcComRetrait(op, montant) {
+  const mt = Number(montant) || 0;
+  const tranche = GRILLE_RETRAIT.find(t => mt >= t.min && mt <= t.max);
+  if (!tranche) return 0;
+  return tranche[op] || 0;
+}
+
+function calcCom(type, op, montant) {
+  if (type === "retrait") return calcComRetrait(op, montant);
+  return 0;
+}
+
+// Tranche courante pour affichage dynamique dans le modal
+function getTranche(montant) {
+  const mt = Number(montant) || 0;
+  return GRILLE_RETRAIT.find(t => mt >= t.min && mt <= t.max) || null;
+}
 const OPERATORS  = ["MTN", "MOOV", "Celtiis"];
 const OP_COLORS  = { MTN: "#FFB800", MOOV: "#0066CC", Celtiis: "#E63946" };
 const OP_BG_D    = { MTN: "#FFB80018", MOOV: "#0066CC18", Celtiis: "#E6394618" };
@@ -93,7 +127,6 @@ const TYPE_LABEL = { depot: "Dépôt", retrait: "Retrait" };
 const JOURS      = ["Dim","Lun","Mar","Mer","Jeu","Ven","Sam"];
 const MOIS_FR    = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
 
-const calcCom  = (type, op, mt) => Math.round((mt||0) * (COMMISSIONS[op]?.[type]||0));
 const fF       = n => Number(n||0).toLocaleString("fr-FR") + " F";
 const todayStr = () => new Date().toISOString().slice(0,10);
 
@@ -695,7 +728,7 @@ export default function MySomme() {
               <div style={{ background:"linear-gradient(135deg,#1A2810,#1A2030)", borderRadius:18, padding: desktop?24:18, marginBottom:16, border:"1px solid #00C89630" }}>
                 <div style={{ fontSize:11, color:"#4A7050", marginBottom:4 }}>💰 Commission {isToday?"du jour":"ce jour"}</div>
                 <div style={{ fontSize: desktop?38:30, fontWeight:900, color:"#00C896" }}>{fF(totalCom)}</div>
-                <div style={{ fontSize:11, color:"#3A5040", marginTop:6 }}>Dépôt 0.5% · Retrait MTN/MOOV 1.5% · Retrait Celtiis 1%</div>
+                <div style={{ fontSize:11, color:"#3A5040", marginTop:6 }}>Dépôt 0.5% · Retrait selon grille tarifaire officielle</div>
               </div>
               {["depot","retrait"].map(type => {
                 const tTxs = txs.filter(t => t.type === type);
@@ -867,11 +900,54 @@ export default function MySomme() {
               {modal === "depot" ? "⬇️ Nouveau Dépôt" : "⬆️ Nouveau Retrait"}
             </div>
 
-            {/* Indicateur commission */}
-            {form.operateur && (
-              <div style={{ background:"#00C89610", border:"1px solid #00C89630", borderRadius:10, padding:"9px 14px", marginBottom:16, fontSize:12, color:"#00C896" }}>
-                💰 Commission : {(COMMISSIONS[form.operateur][modal]*100).toFixed(1)}%
-                {form.montant ? ` → ${fF(calcCom(modal, form.operateur, Number(form.montant)))}` : ""}
+            {/* ── RETRAIT : grille tarifaire en temps réel ── */}
+            {modal === "retrait" && (
+              <div style={{ marginBottom:16 }}>
+                {form.montant && Number(form.montant) >= 100 ? (() => {
+                  const tranche = getTranche(form.montant);
+                  const com     = form.operateur ? calcComRetrait(form.operateur, form.montant) : 0;
+                  return tranche ? (
+                    <div style={{ background:"#4F8EF712", border:"1px solid #4F8EF735", borderRadius:14, padding:"14px 16px" }}>
+                      <div style={{ fontSize:11, color:"#4F8EF7", fontWeight:700, marginBottom:10, letterSpacing:0.5 }}>
+                        📊 TRANCHE : {Number(tranche.min).toLocaleString("fr-FR")} – {Number(tranche.max).toLocaleString("fr-FR")} F
+                      </div>
+                      <div style={{ display:"flex", gap:8, marginBottom: form.operateur ? 12 : 0 }}>
+                        {["MTN","MOOV","Celtiis"].map(op => {
+                          const sel = op === form.operateur;
+                          return (
+                            <div key={op} style={{ flex:1, textAlign:"center", background: sel ? `${OP_COLORS[op]}20` : T.hero, border:`2px solid ${sel ? OP_COLORS[op] : T.border}`, borderRadius:11, padding:"10px 4px" }}>
+                              <div style={{ fontSize:10, color:OP_COLORS[op], fontWeight:800, marginBottom:4 }}>{op}</div>
+                              <div style={{ fontSize:15, fontWeight:900, color: sel ? OP_COLORS[op] : T.text }}>{fF(tranche[op])}</div>
+                              {sel && <div style={{ fontSize:9, color:OP_COLORS[op], marginTop:2, fontWeight:700 }}>✓ sélectionné</div>}
+                            </div>
+                          );
+                        })}
+                      </div>
+                      {form.operateur && (
+                        <div style={{ background:"#00C89618", border:"1px solid #00C89630", borderRadius:10, padding:"10px 14px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                          <span style={{ fontSize:12, color:T.sub }}>💰 Ta commission</span>
+                          <span style={{ fontSize:18, fontWeight:900, color:"#00C896" }}>{fF(com)}</span>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div style={{ background:"#E6394612", border:"1px solid #E6394635", borderRadius:12, padding:"12px 14px", fontSize:13, color:"#E63946", fontWeight:700 }}>
+                      ⚠️ Montant hors grille (100 F – 2 000 000 F)
+                    </div>
+                  );
+                })() : (
+                  <div style={{ background:T.hero, border:`1px solid ${T.border}`, borderRadius:12, padding:"12px 16px", fontSize:12, color:T.sub }}>
+                    💡 Entre le montant que le client veut retirer pour voir sa commission
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── DÉPÔT : aucune commission ── */}
+            {modal === "depot" && (
+              <div style={{ background:"#00C89610", border:"1px solid #00C89625", borderRadius:12, padding:"11px 14px", marginBottom:16, fontSize:12, color:"#00C896", display:"flex", alignItems:"center", gap:8 }}>
+                <span style={{ fontSize:16 }}>ℹ️</span>
+                <span>Aucune commission sur les dépôts — enregistre simplement le montant.</span>
               </div>
             )}
 
