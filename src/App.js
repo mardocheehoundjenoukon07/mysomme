@@ -165,11 +165,12 @@ function getTrialInfo(agent) {
     }
   }
 
-  // Période d'essai
-  const start    = new Date(agent.trial_start || agent.created_at);
-  const totalDays = Number(agent.trial_days) || 14;
-  const elapsed  = Math.floor((now - start) / (1000*60*60*24));
-  const daysLeft = totalDays - elapsed;
+  // Période d'essai — limiter trial_days à 30 max pour éviter la triche
+  const start     = new Date(agent.trial_start || agent.created_at);
+  const rawDays   = Number(agent.trial_days) || 14;
+  const totalDays = Math.min(rawDays, 30); // MAX 30 jours — impossible de tricher
+  const elapsed   = Math.floor((now - start) / (1000*60*60*24));
+  const daysLeft  = totalDays - elapsed;
 
   if (daysLeft > 0) return { status:"trial", daysLeft };
   return { status:"expired", daysLeft:0 };
@@ -353,10 +354,12 @@ function Inscription({ onDone, T }) {
       created_at: nowISO(), trial_start: nowISO()
     };
     const saved = await saveAgent(agent);
-    // Créditer le parrain si lien de parrainage
     if (refCode) await crediterParrain(refCode);
-    lsSet("ms_agent", saved || agent);
-    onDone(saved || agent);
+    // Recharger depuis Supabase pour avoir les vraies données
+    const fresh = await fetchAgent(agent.telephone);
+    const trusted = fresh ? { ...fresh, pin: pinHash } : { ...(saved||agent), pin: pinHash };
+    lsSet("ms_agent", trusted);
+    onDone(trusted);
   }
 
   // ── CONNEXION ──
@@ -691,8 +694,14 @@ export default function MySomme() {
     }
     const pinHash = await hashPin(pin);
     if (pinHash === agent.pin) {
+      // Toujours recharger depuis Supabase — jamais faire confiance au localStorage
       fetchAgent(agent.telephone).then(fresh => {
-        if (fresh) { lsSet("ms_agent", fresh); setAgent(fresh); }
+        if (fresh) {
+          // Garder seulement le PIN hashé du cache local (pas dans Supabase)
+          const trusted = { ...fresh, pin: agent.pin };
+          lsSet("ms_agent", trusted);
+          setAgent(trusted);
+        }
       });
       setLocked(false); setPinErr(""); setPinAttempts(0);
     } else {
