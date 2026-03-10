@@ -467,7 +467,7 @@ function Inscription({ onDone, T }) {
 }
 
 // ─── COMPOSANT MUR DE PAIEMENT ────────────────────────────────────────────────
-function PaymentWall({ agent, T, onPaid }) {
+function PaymentWall({ agent, T, onPaid, onBack }) {
   const [paying, setPaying] = useState(false);
   const [done,   setDone]   = useState(false);
 
@@ -524,6 +524,14 @@ function PaymentWall({ agent, T, onPaid }) {
   return (
     <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", minHeight:"100vh", background:T.bg, padding:24 }}>
       <div style={{ width:"100%", maxWidth:380, textAlign:"center" }}>
+        {/* Bouton retour si pas expiré */}
+        {onBack && (
+          <div style={{ width:"100%", marginBottom:16 }}>
+            <button onClick={onBack} style={{ background:"transparent", border:"none", color:T.sub, fontSize:13, cursor:"pointer", display:"flex", alignItems:"center", gap:6, padding:0 }}>
+              ← Retour
+            </button>
+          </div>
+        )}
         {/* Logo */}
         <div style={{ width:64, height:64, background:"linear-gradient(135deg,#00C896,#00A5FF)", borderRadius:18, display:"flex", alignItems:"center", justifyContent:"center", fontWeight:900, fontSize:24, color:"#fff", margin:"0 auto 20px", boxShadow:"0 8px 30px #00C89640" }}>MS</div>
 
@@ -593,6 +601,7 @@ export default function MySomme() {
   const [activeDays,    setActiveDays]    = useState([]);
   const [showCal,       setShowCal]       = useState(false);
   const [pendingCount,  setPendingCount]  = useState(0);
+  const [showPaywall,   setShowPaywall]   = useState(false);
 
   const w       = useWindowWidth();
   const mobile  = w < 640;
@@ -726,8 +735,8 @@ export default function MySomme() {
   if (locked) return <PinPad title="Bon retour 👋" subtitle={`Content de te revoir, ${agent.nom.split(" ")[0]} !`} onSubmit={handleUnlock} T={T} error={pinErr} />;
 
   // ── Vérification trial ───────────────────────────────────────────────────────
-  if (trialInfo?.status === "expired") {
-    return <PaymentWall agent={agent} T={T} onPaid={a=>{setAgent(a);lsSet("ms_agent",a);}} />;
+  if (trialInfo?.status === "expired" || showPaywall) {
+    return <PaymentWall agent={agent} T={T} onPaid={a=>{setAgent(a);lsSet("ms_agent",a);setShowPaywall(false);}} onBack={trialInfo?.status!=="expired"?()=>setShowPaywall(false):null} />;
   }
 
   const NAV_ITEMS = [
@@ -1104,7 +1113,7 @@ export default function MySomme() {
                   <div style={{ background:`linear-gradient(135deg,${T.hero},${T.card})`, border:`1px solid #00C89630`, borderRadius:12, padding:"16px 18px", textAlign:"center" }}>
                     <div style={{ fontSize:12, color:T.sub, marginBottom:4 }}>Abonnement mensuel</div>
                     <div style={{ fontSize:28, fontWeight:900, color:"#00C896", marginBottom:10 }}>1 999 F/mois</div>
-                    <button onClick={()=>{setAgent(prev=>({...prev,_forcePaywall:true})); window.location.reload();}}
+                    <button onClick={()=>setShowPaywall(true)}
                       style={{ width:"100%", padding:14, borderRadius:12, background:"linear-gradient(135deg,#00C896,#00A5FF)", border:"none", color:"#fff", fontWeight:800, fontSize:14, cursor:"pointer" }}>
                       💳 S'abonner maintenant
                     </button>
