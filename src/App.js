@@ -302,7 +302,7 @@ function Inscription({ onDone, T }) {
 
   // ── INSCRIPTION : vérification OTP ──
   async function handleVerifyOTP() {
-    if (otp.length < 6) { setError("Le code fait 6 chiffres"); return; }
+    if (otp.length < 8) { setError("Le code fait 8 chiffres"); return; }
     setLoading(true); setError("");
     const ok = await verifyOTP(form.email, otp);
     setLoading(false);
@@ -429,9 +429,9 @@ function Inscription({ onDone, T }) {
             <div style={{ fontSize:12, color:T.sub }}>Vérifie ta boîte mail (et les spams) — valable 10 minutes</div>
           </div>
           <div style={{ marginBottom:20 }}>
-            <div style={{ fontSize:11, color:T.sub, marginBottom:8, fontWeight:700, letterSpacing:1 }}>ENTRE LE CODE À 6 CHIFFRES</div>
+            <div style={{ fontSize:11, color:T.sub, marginBottom:8, fontWeight:700, letterSpacing:1 }}>ENTRE LE CODE À 8 CHIFFRES</div>
             <input
-              type="number" placeholder="123456" value={otp} onChange={e=>setOtp(e.target.value.slice(0,6))}
+              type="number" placeholder="12345678" value={otp} onChange={e=>setOtp(e.target.value.slice(0,8))}
               style={{ ...inp, fontSize:28, fontWeight:900, textAlign:"center", letterSpacing:8 }}
             />
           </div>
