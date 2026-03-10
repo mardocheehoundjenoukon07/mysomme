@@ -6,7 +6,7 @@ const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsI
 const H = { "apikey": SUPA_KEY, "Authorization": `Bearer ${SUPA_KEY}`, "Content-Type": "application/json", "Prefer": "return=representation" };
 
 // ─── FEDAPAY — remplace pk_live_... par ta vraie clé publique FedaPay ─────────
-const FEDAPAY_PUBLIC_KEY = "pk_live_REMPLACE_PAR_TA_CLE_PUBLIQUE";
+const FEDAPAY_PUBLIC_KEY = "pk_live_vRdpnDaTzespWJs833LKBaov";
 
 // ─── CACHE LOCAL ──────────────────────────────────────────────────────────────
 function lsGet(k)    { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : null; } catch { return null; } }
