@@ -468,49 +468,71 @@ function Inscription({ onDone, T }) {
 
 // ─── COMPOSANT MUR DE PAIEMENT ────────────────────────────────────────────────
 function PaymentWall({ agent, T, onPaid, onBack }) {
-  const [paying, setPaying] = useState(false);
-  const [done,   setDone]   = useState(false);
+  const [paying,       setPaying]       = useState(false);
+  const [done,         setDone]         = useState(false);
+  const [scriptReady,  setScriptReady]  = useState(false);
 
   useEffect(() => {
-    // Charger le script FedaPay inline
-    if (document.getElementById("fedapay-script")) return;
+    // Charger le script FedaPay et attendre qu'il soit prêt
+    if (window.FedaPay) { setScriptReady(true); return; }
+    const existing = document.getElementById("fedapay-script");
+    if (existing) {
+      existing.onload = () => setScriptReady(true);
+      return;
+    }
     const script = document.createElement("script");
     script.id  = "fedapay-script";
     script.src = "https://cdn.fedapay.com/checkout.js?v=1.1.7";
     script.async = true;
+    script.onload  = () => setScriptReady(true);
+    script.onerror = () => console.error("Erreur chargement FedaPay");
     document.head.appendChild(script);
   }, []);
 
-  function lancerPaiement() {
+  async function lancerPaiement() {
+    if (!scriptReady || !window.FedaPay) {
+      alert("Chargement en cours… Réessaie dans 2 secondes.");
+      return;
+    }
     setPaying(true);
     try {
-      const FedaPay = window.FedaPay;
-      if (!FedaPay) { alert("Erreur chargement FedaPay. Réessaie."); setPaying(false); return; }
-
-      FedaPay.init({
+      window.FedaPay.init({
         public_key: FEDAPAY_PUBLIC_KEY,
         transaction: {
           amount: 1999,
-          description: "Abonnement My Somme — 1 mois",
+          description: "Abonnement My Somme 1 mois",
           currency: { iso: "XOF" }
         },
         customer: {
-          email: agent.email || "",
-          phone_number: { number: agent.telephone, country: "BJ" }
+          email: agent.email || "client@mysomme.app",
+          phone_number: {
+            number: agent.telephone,
+            country: "bj"
+          }
         },
         onComplete: async function(resp) {
           setPaying(false);
-          if (resp.reason === FedaPay?.CHECKOUT_COMPLETED || resp.transaction?.status === "approved") {
-            await activerAbonnement(agent.telephone, resp.transaction?.id || "manual");
-            // Mettre à jour le cache local
-            const updated = { ...agent, subscription_status:"active", subscription_expires_at: new Date(Date.now()+30*24*60*60*1000).toISOString() };
+          const status = resp?.transaction?.status;
+          if (status === "approved" || status === "completed") {
+            await activerAbonnement(agent.telephone, String(resp?.transaction?.id || "ok"));
+            const updated = {
+              ...agent,
+              subscription_status: "active",
+              subscription_expires_at: new Date(Date.now()+30*24*60*60*1000).toISOString()
+            };
             lsSet("ms_agent", updated);
             setDone(true);
-            setTimeout(() => onPaid(updated), 1500);
+            setTimeout(() => onPaid(updated), 1800);
+          } else {
+            setPaying(false);
           }
         }
       }).open();
-    } catch(e) { console.error(e); setPaying(false); }
+    } catch(e) {
+      console.error("FedaPay error:", e);
+      setPaying(false);
+      alert("Erreur : " + e.message);
+    }
   }
 
   if (done) return (
@@ -557,9 +579,9 @@ function PaymentWall({ agent, T, onPaid, onBack }) {
         </div>
 
         {/* Bouton payer */}
-        <button onClick={lancerPaiement} disabled={paying}
-          style={{ width:"100%", padding:18, borderRadius:16, background:paying?"#1A1D2E":"linear-gradient(135deg,#00C896,#00A5FF)", border:"none", color:paying?T.sub:"#fff", fontWeight:900, fontSize:17, cursor:paying?"not-allowed":"pointer", boxShadow:paying?"none":"0 6px 24px #00C89640", marginBottom:14 }}>
-          {paying ? "⏳ Chargement..." : "💳 Payer 1 999 F et continuer"}
+        <button onClick={lancerPaiement} disabled={paying || !scriptReady}
+          style={{ width:"100%", padding:18, borderRadius:16, background:(paying||!scriptReady)?"#1A1D2E":"linear-gradient(135deg,#00C896,#00A5FF)", border:"none", color:(paying||!scriptReady)?T.sub:"#fff", fontWeight:900, fontSize:17, cursor:(paying||!scriptReady)?"not-allowed":"pointer", boxShadow:(paying||!scriptReady)?"none":"0 6px 24px #00C89640", marginBottom:14 }}>
+          {!scriptReady ? "⏳ Chargement..." : paying ? "⏳ Ouverture..." : "💳 Payer 1 999 F et continuer"}
         </button>
 
         <div style={{ fontSize:11, color:T.sub, lineHeight:1.6 }}>
