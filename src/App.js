@@ -36,6 +36,19 @@ function nowISO() {
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}${sign}${hh}:${mm}`;
 }
 
+// ─── SÉCURITÉ : HASH PIN SHA-256 ─────────────────────────────────────────────
+async function hashPin(pin) {
+  try {
+    const msgBuffer = new TextEncoder().encode(pin);
+    const hashBuffer = await crypto.subtle.digest("SHA-256", msgBuffer);
+    const hashArray  = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2,"0")).join("");
+  } catch {
+    // Fallback si crypto.subtle non disponible
+    return pin;
+  }
+}
+
 // ─── API SUPABASE ─────────────────────────────────────────────────────────────
 async function fetchTxsByDate(dateStr, userId) {
   try {
@@ -321,12 +334,13 @@ function Inscription({ onDone, T }) {
 
   // ── INSCRIPTION : confirmation PIN → sauvegarder ──
   async function handlePinConfirm(p) {
-    if (p !== pin) { setError("Les codes PIN ne correspondent pas."); setStep(3); return; }
+    if (p !== pin) { setError("Les codes PIN ne correspondent pas."); setStep(3); setPin(""); return; }
     setLoading(true);
     const refCode = getRefFromURL();
+    const pinHash = await hashPin(p);
     const agent = {
       nom: form.nom, telephone: form.telephone, email: form.email,
-      reseau: form.reseau, pin: p,
+      reseau: form.reseau, pin: pinHash,
       referral_code: form.telephone,
       referred_by: refCode || null,
       referral_count: 0,
@@ -352,9 +366,10 @@ function Inscription({ onDone, T }) {
     lsSet("ms_agent", agent);
     setStep(10);
   }
-  function handlePinLogin(p) {
+  async function handlePinLogin(p) {
     const agent = lsGet("ms_agent");
-    if (p === agent?.pin) onDone(agent);
+    const pinHash = await hashPin(p);
+    if (pinHash === agent?.pin) onDone(agent);
     else setError("Code PIN incorrect.");
   }
 
@@ -640,9 +655,9 @@ export default function MySomme() {
     return () => window.removeEventListener("online", trySync);
   }, [agent]);
 
-  function handleUnlock(pin) {
-    if (pin === agent.pin) {
-      // Rafraîchir les données agent depuis Supabase pour avoir le bon trial_days
+  async function handleUnlock(pin) {
+    const pinHash = await hashPin(pin);
+    if (pinHash === agent.pin) {
       fetchAgent(agent.telephone).then(fresh => {
         if (fresh) { lsSet("ms_agent", fresh); setAgent(fresh); }
       });
