@@ -1304,9 +1304,15 @@ export default function MonPoint() {
 
       {/* ══ FABs ════════════════════════════════════════════════════════ */}
       {!desktop && isToday && (
-        <div style={{ position:"fixed", bottom:mobile?116:124, right:tablet?22:16, display:"flex", flexDirection:"column", gap:12, zIndex:60 }}>
-          <button onClick={()=>{setModal("retrait");setForm({});}} style={{ width:52, height:52, borderRadius:"50%", background:"#4F8EF7", border:"none", color:"#fff", fontSize:20, cursor:"pointer", boxShadow:"0 4px 18px #4F8EF760", display:"flex", alignItems:"center", justifyContent:"center" }}>⬆️</button>
-          <button onClick={()=>{setModal("depot");setForm({});}} style={{ width:60, height:60, borderRadius:"50%", background:"linear-gradient(135deg,#00C896,#009E78)", border:"none", color:"#fff", fontSize:24, cursor:"pointer", boxShadow:"0 6px 24px #00C89660", display:"flex", alignItems:"center", justifyContent:"center" }}>⬇️</button>
+        <div style={{ position:"fixed", bottom:mobile?116:124, right:tablet?22:16, display:"flex", flexDirection:"column", gap:10, zIndex:60 }}>
+          <button onClick={()=>{setModal("retrait");setForm({});}}
+            style={{ height:48, paddingLeft:16, paddingRight:18, borderRadius:24, background:"#4F8EF7", border:"none", color:"#fff", fontSize:13, fontWeight:800, cursor:"pointer", boxShadow:"0 4px 18px #4F8EF760", display:"flex", alignItems:"center", gap:8, whiteSpace:"nowrap" }}>
+            <span style={{ fontSize:18 }}>⬆️</span> Retrait
+          </button>
+          <button onClick={()=>{setModal("depot");setForm({});}}
+            style={{ height:54, paddingLeft:18, paddingRight:20, borderRadius:27, background:"linear-gradient(135deg,#00C896,#009E78)", border:"none", color:"#fff", fontSize:14, fontWeight:900, cursor:"pointer", boxShadow:"0 6px 24px #00C89660", display:"flex", alignItems:"center", gap:8, whiteSpace:"nowrap" }}>
+            <span style={{ fontSize:20 }}>⬇️</span> Dépôt
+          </button>
         </div>
       )}
 
