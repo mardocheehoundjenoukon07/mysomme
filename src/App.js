@@ -692,22 +692,16 @@ export default function MonPoint() {
   useEffect(() => {
     if (!agent) return;
     let lastDay = todayStr();
-    const checkNewDay = () => {
+    const interval = setInterval(() => {
       const currentDay = todayStr();
       if (currentDay !== lastDay) {
-        // Nouveau jour détecté !
         lastDay = currentDay;
-        setSelectedDate(currentDay);  // Basculer sur aujourd'hui
-        setTxs([]);                   // Vider les anciens chiffres
-        loadTxs(currentDay);          // Charger les chiffres du nouveau jour
-        setFlash("newday");           // Flash notification
-        setTimeout(() => setFlash(null), 3000);
+        setSelectedDate(currentDay);
+        setTxs([]);
       }
-    };
-    // Vérifier toutes les 60 secondes
-    const interval = setInterval(checkNewDay, 60 * 1000);
+    }, 60 * 1000);
     return () => clearInterval(interval);
-  }, [agent, loadTxs]);
+  }, [agent]);
 
   // Protection bouton retour
   useEffect(() => {
@@ -890,16 +884,12 @@ export default function MonPoint() {
     <div style={{ background:T.bg, minHeight:"100vh", width:"100vw", maxWidth:"100%", margin:0, padding:0, color:T.text, fontFamily:"'Segoe UI',system-ui,sans-serif", position:"relative", overflowX:"hidden" }}>
 
       {/* FLASH */}
-      {flash && flash !== "newday" && (
+      {flash && (
         <div style={{ position:"fixed", top:20, left:"50%", transform:"translateX(-50%)", background:TYPE_COLOR[flash], color:"#fff", borderRadius:14, padding:"12px 28px", fontWeight:800, fontSize:14, zIndex:9999, boxShadow:"0 4px 24px #0009", whiteSpace:"nowrap" }}>
           ✅ {TYPE_LABEL[flash]} enregistré !
         </div>
       )}
-      {flash === "newday" && (
-        <div style={{ position:"fixed", top:20, left:"50%", transform:"translateX(-50%)", background:"linear-gradient(135deg,#00C896,#00A5FF)", color:"#fff", borderRadius:14, padding:"14px 32px", fontWeight:800, fontSize:14, zIndex:9999, boxShadow:"0 4px 24px #00C89660", whiteSpace:"nowrap", textAlign:"center" }}>
-          🌅 Bonne journée ! Nouveau jour — chiffres remis à zéro
-        </div>
-      )}
+
 
       {/* BADGE PENDING */}
       {pendingCount > 0 && (
