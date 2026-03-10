@@ -260,9 +260,10 @@ function useWindowWidth() {
 }
 
 // ─── COMPOSANT PIN ────────────────────────────────────────────────────────────
-function PinPad({ title, subtitle, onSubmit, T, error }) {
+function PinPad({ title, subtitle, onSubmit, T, error, blocked }) {
   const [pin, setPin] = useState("");
   const add = d => {
+    if (blocked) return;
     if (pin.length >= 4) return;
     const p = pin + d; setPin(p);
     if (p.length === 4) setTimeout(() => { onSubmit(p); setPin(""); }, 140);
@@ -299,7 +300,9 @@ function Inscription({ onDone, T }) {
   const [pin,     setPin]     = useState("");
   const [error,   setError]   = useState("");
   const [loading, setLoading] = useState(false);
-  const [otpSent, setOtpSent] = useState(false);
+  const [otpSent,       setOtpSent]       = useState(false);
+  const [loginAttempts, setLoginAttempts] = useState(0);
+  const [loginBlocked,  setLoginBlocked]  = useState(false);
   const w = useWindowWidth();
 
   const inp = { width:"100%", background:T.input, border:`2px solid ${T.border}`, borderRadius:12, padding:"14px 16px", color:T.text, fontSize:15, outline:"none", boxSizing:"border-box", display:"block" };
@@ -367,10 +370,30 @@ function Inscription({ onDone, T }) {
     setStep(10);
   }
   async function handlePinLogin(p) {
+    if (loginBlocked) {
+      setError("🔒 Trop de tentatives. Réessaie dans 5 minutes.");
+      return;
+    }
     const agent = lsGet("ms_agent");
     const pinHash = await hashPin(p);
-    if (pinHash === agent?.pin) onDone(agent);
-    else setError("Code PIN incorrect.");
+    if (pinHash === agent?.pin) {
+      onDone(agent);
+      setLoginAttempts(0);
+    } else {
+      const newAttempts = loginAttempts + 1;
+      setLoginAttempts(newAttempts);
+      if (newAttempts >= 3) {
+        setLoginBlocked(true);
+        setError("🔒 3 tentatives échouées — bloqué 5 minutes.");
+        setTimeout(() => {
+          setLoginBlocked(false);
+          setLoginAttempts(0);
+          setError("");
+        }, 5 * 60 * 1000);
+      } else {
+        setError(`Code PIN incorrect. ${3 - newAttempts} tentative${3-newAttempts>1?"s":""} restante${3-newAttempts>1?"s":""}.`);
+      }
+    }
   }
 
   // ── Écrans PIN ──
@@ -592,6 +615,9 @@ export default function MySomme() {
   const [agent,         setAgent]         = useState(null);
   const [locked,        setLocked]        = useState(false);
   const [pinErr,        setPinErr]        = useState("");
+  const [pinAttempts,   setPinAttempts]   = useState(0);
+  const [pinBlocked,    setPinBlocked]    = useState(false);
+  const [pinBlockTime,  setPinBlockTime]  = useState(null);
   const [tab,           setTab]           = useState("accueil");
   const [modal,         setModal]         = useState(null);
   const [form,          setForm]          = useState({});
@@ -656,13 +682,36 @@ export default function MySomme() {
   }, [agent]);
 
   async function handleUnlock(pin) {
+    // Vérifier si bloqué
+    if (pinBlocked) {
+      const now = Date.now();
+      const diff = Math.ceil((pinBlockTime + 5*60*1000 - now) / 60000);
+      setPinErr(`🔒 Compte bloqué. Réessaie dans ${diff} minute${diff>1?"s":""}.`);
+      return;
+    }
     const pinHash = await hashPin(pin);
     if (pinHash === agent.pin) {
       fetchAgent(agent.telephone).then(fresh => {
         if (fresh) { lsSet("ms_agent", fresh); setAgent(fresh); }
       });
-      setLocked(false); setPinErr("");
-    } else setPinErr("Code PIN incorrect. Réessaie.");
+      setLocked(false); setPinErr(""); setPinAttempts(0);
+    } else {
+      const newAttempts = pinAttempts + 1;
+      setPinAttempts(newAttempts);
+      if (newAttempts >= 3) {
+        setPinBlocked(true);
+        setPinBlockTime(Date.now());
+        setPinErr("🔒 3 tentatives échouées — compte bloqué 5 minutes.");
+        // Débloquer automatiquement après 5 minutes
+        setTimeout(() => {
+          setPinBlocked(false);
+          setPinAttempts(0);
+          setPinErr("");
+        }, 5 * 60 * 1000);
+      } else {
+        setPinErr(`Code PIN incorrect. ${3 - newAttempts} tentative${3-newAttempts>1?"s":""} restante${3-newAttempts>1?"s":""}.`);
+      }
+    }
   }
 
   function handleLogout() {
