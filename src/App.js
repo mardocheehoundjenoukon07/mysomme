@@ -3,7 +3,16 @@ import { useState, useEffect, useCallback } from "react";
 // ─── SUPABASE ─────────────────────────────────────────────────────────────────
 const SUPA_URL = "https://xwpepotkvjendslfgpza.supabase.co";
 const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh3cGVwb3RrdmplbmRzbGZncHphIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMwNTIxOTMsImV4cCI6MjA4ODYyODE5M30.DzgVA46ldUCX-CGE-Byk3QZkQSRMr_HvVXhJl8ZT9H0";
+// Headers de base (sans agent)
 const H = { "apikey": SUPA_KEY, "Authorization": `Bearer ${SUPA_KEY}`, "Content-Type": "application/json", "Prefer": "return=representation" };
+
+// Headers avec identité agent — requis par le RLS Supabase
+function HA(agentId) {
+  return {
+    ...H,
+    "x-agent-id": agentId || ""
+  };
+}
 
 // ─── CACHE LOCAL ──────────────────────────────────────────────────────────────
 function lsGet(k)    { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : null; } catch { return null; } }
@@ -30,27 +39,27 @@ function nowISO() {
 // ─── API SUPABASE ─────────────────────────────────────────────────────────────
 async function fetchTxsByDate(dateStr, userId) {
   try {
-    const res = await fetch(`${SUPA_URL}/rest/v1/transactions?created_at=gte.${dateStr}T00:00:00+01:00&created_at=lte.${dateStr}T23:59:59+01:00&user_id=eq.${userId}&order=created_at.desc`, { headers: H });
+    const res = await fetch(`${SUPA_URL}/rest/v1/transactions?created_at=gte.${dateStr}T00:00:00+01:00&created_at=lte.${dateStr}T23:59:59+01:00&user_id=eq.${userId}&order=created_at.desc`, { headers: HA(userId) });
     if (res.ok) { const data = await res.json(); lsSet(txKey(dateStr, userId), data); return data; }
   } catch {}
   return lsGet(txKey(dateStr, userId)) || [];
 }
 async function saveTxRemote(tx) {
   try {
-    const res = await fetch(`${SUPA_URL}/rest/v1/transactions`, { method:"POST", headers:H, body:JSON.stringify(tx) });
+    const res = await fetch(`${SUPA_URL}/rest/v1/transactions`, { method:"POST", headers:HA(tx.user_id), body:JSON.stringify(tx) });
     if (res.ok) return (await res.json())[0];
     console.error("Supabase error:", res.status, await res.text());
   } catch(e) { console.error(e); }
   return null;
 }
-async function deleteTx(id) {
-  try { await fetch(`${SUPA_URL}/rest/v1/transactions?id=eq.${id}`, { method:"DELETE", headers:H }); } catch {}
+async function deleteTx(id, userId) {
+  try { await fetch(`${SUPA_URL}/rest/v1/transactions?id=eq.${id}`, { method:"DELETE", headers:HA(userId) }); } catch {}
 }
 async function fetchActiveDays(year, month, userId) {
   try {
     const from = `${year}-${String(month).padStart(2,"0")}-01`;
     const to   = `${year}-${String(month).padStart(2,"0")}-31`;
-    const res  = await fetch(`${SUPA_URL}/rest/v1/transactions?created_at=gte.${from}T00:00:00+01:00&created_at=lte.${to}T23:59:59+01:00&user_id=eq.${userId}&select=created_at`, { headers:H });
+    const res  = await fetch(`${SUPA_URL}/rest/v1/transactions?created_at=gte.${from}T00:00:00+01:00&created_at=lte.${to}T23:59:59+01:00&user_id=eq.${userId}&select=created_at`, { headers:HA(userId) });
     if (!res.ok) return [];
     return [...new Set((await res.json()).map(t => t.created_at.slice(0,10)))];
   } catch { return []; }
@@ -72,7 +81,7 @@ async function fetchAgent(telephone) {
 async function updateAgent(telephone, fields) {
   try {
     const res = await fetch(`${SUPA_URL}/rest/v1/agents?telephone=eq.${telephone}`, {
-      method:"PATCH", headers:H, body:JSON.stringify(fields)
+      method:"PATCH", headers:HA(telephone), body:JSON.stringify(fields)
     });
     return res.ok;
   } catch { return false; }
@@ -163,7 +172,7 @@ async function activerAbonnement(telephone, fedapayId) {
   // Sauvegarder dans la table abonnements
   try {
     await fetch(`${SUPA_URL}/rest/v1/abonnements`, {
-      method:"POST", headers:H,
+      method:"POST", headers:HA(telephone),
       body:JSON.stringify({ agent_telephone:telephone, montant:1999, fedapay_id:fedapayId, statut:"paid", expire_at:exp.toISOString() })
     });
   } catch {}
@@ -692,7 +701,7 @@ export default function MySomme() {
   }
 
   async function removeTx(id) {
-    await deleteTx(id);
+    await deleteTx(id, agent.telephone);
     const updated = txs.filter(t=>t.id!==id);
     setTxs(updated);
     lsSet(txKey(selectedDate, agent.telephone), updated);
