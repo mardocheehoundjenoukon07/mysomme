@@ -19,8 +19,9 @@ function lsGet(k)    { try { const v = localStorage.getItem(k); return v ? JSON.
 function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
 function lsDel(k)    { try { localStorage.removeItem(k); } catch {} }
 
-const txKey   = (date, uid) => `ms_txs_${uid}_${date}`;
-const pendKey = uid          => `ms_pend_${uid}`;
+const txKey    = (date, uid) => `ms_txs_${uid}_${date}`;
+const pendKey  = uid          => `ms_pend_${uid}`;
+const floatKey = (date, uid) => `ms_float_${uid}_${date}`;
 
 // ─── DATE LOCALE BÉNIN (UTC+1) ───────────────────────────────────────────────
 function todayStr() {
@@ -705,6 +706,10 @@ export default function MonPoint() {
   const [showCal,       setShowCal]       = useState(false);
   const [pendingCount,  setPendingCount]  = useState(0);
   const [showPaywall,   setShowPaywall]   = useState(false);
+  const [floats,        setFloats]        = useState({ MTN:null, MOOV:null, Celtiis:null });
+  const [showFloatModal,setShowFloatModal]= useState(false);
+  const [floatEditOp,   setFloatEditOp]  = useState(null);
+  const [floatInput,    setFloatInput]   = useState("");
 
   const w       = useWindowWidth();
   const mobile  = w < 640;
@@ -917,6 +922,7 @@ export default function MonPoint() {
   }, [agent]);
 
   useEffect(() => { if (agent && !locked) loadTxs(selectedDate); }, [selectedDate, agent, locked]);
+  useEffect(() => { if (agent && !locked) loadFloats(selectedDate); }, [selectedDate, agent, locked]);
   useEffect(() => { if (agent && !locked) fetchActiveDays(calYear, calMonth, agent.telephone).then(setActiveDays); }, [calMonth, calYear, agent, locked]);
 
   const sum      = f => txs.filter(f).reduce((s,t) => s+Number(t.montant),    0);
@@ -959,9 +965,53 @@ export default function MonPoint() {
     setConfirm(null);
   }
 
+  // ── FLOAT (UNITÉS) ──────────────────────────────────────────────────────────
+  function loadFloats(date) {
+    const stored = lsGet(floatKey(date, agent.telephone));
+    setFloats(stored || { MTN:null, MOOV:null, Celtiis:null });
+  }
+
+  function saveFloat(op, solde) {
+    const updated = { ...floats, [op]: Number(solde) };
+    setFloats(updated);
+    lsSet(floatKey(selectedDate, agent.telephone), updated);
+  }
+
+  function calcFloatActuel(op) {
+    if (floats[op] === null || floats[op] === undefined) return null;
+    const depots   = txs.filter(t=>t.operateur===op&&t.type==="depot")  .reduce((s,t)=>s+Number(t.montant),0);
+    const retraits = txs.filter(t=>t.operateur===op&&t.type==="retrait").reduce((s,t)=>s+Number(t.montant),0);
+    // Dépôt → agent envoie unités → float baisse
+    // Retrait → agent reçoit unités → float monte
+    return floats[op] - depots + retraits;
+  }
+
+  function getFloatColor(actuel, depart) {
+    if (actuel === null || depart === null || depart === 0) return "#4A5060";
+    const pct = actuel / depart;
+    if (actuel < 0)   return "#E63946";
+    if (pct < 0.15)   return "#E63946";
+    if (pct < 0.35)   return "#FFB800";
+    return "#00C896";
+  }
+
+  function getFloatLabel(actuel, depart) {
+    if (actuel === null) return null;
+    if (actuel < 0)     return "⚠️ Dépassé";
+    const pct = depart > 0 ? actuel / depart : 1;
+    if (pct < 0.15)     return "🔴 Critique";
+    if (pct < 0.35)     return "🟡 Faible";
+    return "🟢 OK";
+  }
+
   function shareReport() {
     const dateLabel = new Date(selectedDate).toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
-    const text = `📊 *Point du jour — Mon Point*\n📅 ${dateLabel}\n👤 Agent : ${agent.nom}\n\n⬇️ Dépôts : ${fF(sum(t=>t.type==="depot"))}\n⬆️ Retraits : ${fF(sum(t=>t.type==="retrait"))}\n\n💰 *CA Total : ${fF(totalCA)}*\n✅ *Commission : ${fF(totalCom)}*\n\n_Généré par Mon Point_`;
+    const floatLines = OPERATORS.map(op => {
+      const actuel = calcFloatActuel(op);
+      if (actuel === null) return null;
+      return `💼 Float ${op} : ${fF(actuel)}`;
+    }).filter(Boolean).join("\n");
+    const text = `📊 *Point du jour — Mon Point*\n📅 ${dateLabel}\n👤 Agent : ${agent.nom}\n\n⬇️ Dépôts : ${fF(sum(t=>t.type==="depot"))}\n⬆️ Retraits : ${fF(sum(t=>t.type==="retrait"))}\n\n💰 *CA Total : ${fF(totalCA)}*\n✅ *Commission : ${fF(totalCom)}*${floatLines?"\n\n"+floatLines:""}\n\n_Généré par Mon Point_`;
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
   }
 
@@ -1234,6 +1284,98 @@ export default function MonPoint() {
             <button onClick={shareReport} style={{ width:"100%", padding:16, borderRadius:16, background:"linear-gradient(135deg,#25D366,#128C7E)", border:"none", color:"#fff", fontWeight:800, fontSize:14, cursor:"pointer", marginBottom:14, display:"flex", alignItems:"center", justifyContent:"center", gap:10 }}>
               <span style={{ fontSize:20 }}>📤</span> Envoyer le point du jour sur WhatsApp
             </button>
+
+            {/* ══ CARTE FLOAT / UNITÉS ══ */}
+            <div style={{ background:T.card, borderRadius:16, padding:desktop?22:18, marginBottom:14, border:`1px solid #7B2FBE30` }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+                <div style={{ fontWeight:800, fontSize:14 }}>💼 Mes Unités (Float)</div>
+                {isToday && (
+                  <button onClick={()=>{setFloatEditOp(null);setFloatInput("");setShowFloatModal(true);}}
+                    style={{ background:"#7B2FBE18", border:"1px solid #7B2FBE40", borderRadius:9, padding:"5px 12px", color:"#9B5FDE", fontSize:11, fontWeight:800, cursor:"pointer" }}>
+                    ✏️ Modifier
+                  </button>
+                )}
+              </div>
+
+              {OPERATORS.map((op, i) => {
+                const actuel = calcFloatActuel(op);
+                const depart = floats[op];
+                const color  = getFloatColor(actuel, depart);
+                const label  = getFloatLabel(actuel, depart);
+                const depots   = txs.filter(t=>t.operateur===op&&t.type==="depot")  .reduce((s,t)=>s+Number(t.montant),0);
+                const retraits = txs.filter(t=>t.operateur===op&&t.type==="retrait").reduce((s,t)=>s+Number(t.montant),0);
+                const pct = depart > 0 && actuel !== null ? Math.max(0, Math.min(100, (actuel / depart) * 100)) : 0;
+
+                return (
+                  <div key={op} style={{ marginBottom: i < 2 ? 14 : 0, paddingBottom: i < 2 ? 14 : 0, borderBottom: i < 2 ? `1px solid ${T.border}` : "none" }}>
+                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8 }}>
+                      <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                        <div style={{ width:34, height:34, background:OP_BG[op], border:`1px solid ${OP_COLORS[op]}40`, borderRadius:9, display:"flex", alignItems:"center", justifyContent:"center", fontSize:9, fontWeight:900, color:OP_COLORS[op], flexShrink:0 }}>{op}</div>
+                        <div>
+                          <div style={{ fontSize:13, fontWeight:700 }}>{op}</div>
+                          {depart !== null
+                            ? <div style={{ fontSize:10, color:T.sub }}>Départ : {fF(depart)}</div>
+                            : <div style={{ fontSize:10, color:T.faint }}>Non défini</div>
+                          }
+                        </div>
+                      </div>
+                      <div style={{ textAlign:"right" }}>
+                        {actuel !== null ? (
+                          <>
+                            <div style={{ fontSize:18, fontWeight:900, color }}>{fF(actuel)}</div>
+                            <div style={{ fontSize:10, fontWeight:700, color, marginTop:1 }}>{label}</div>
+                          </>
+                        ) : (
+                          <button onClick={()=>{setFloatEditOp(op);setFloatInput("");setShowFloatModal(true);}}
+                            style={{ background:"#7B2FBE18", border:"1px solid #7B2FBE40", borderRadius:8, padding:"6px 12px", color:"#9B5FDE", fontSize:11, fontWeight:800, cursor:"pointer" }}>
+                            + Définir
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Barre de progression du float */}
+                    {depart !== null && actuel !== null && (
+                      <div style={{ marginBottom:6 }}>
+                        <div style={{ height:6, background:T.faint, borderRadius:3, overflow:"hidden" }}>
+                          <div style={{ height:"100%", width:`${pct}%`, background:color, borderRadius:3, transition:"width 0.4s ease" }} />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Effet des transactions */}
+                    {depart !== null && (depots > 0 || retraits > 0) && (
+                      <div style={{ display:"flex", gap:8, marginTop:6 }}>
+                        {depots > 0 && (
+                          <div style={{ flex:1, background:"#00C89610", border:"1px solid #00C89625", borderRadius:8, padding:"5px 10px", fontSize:10 }}>
+                            <span style={{ color:T.sub }}>⬇️ Dépôts : </span>
+                            <span style={{ color:"#E63946", fontWeight:700 }}>-{fF(depots)}</span>
+                          </div>
+                        )}
+                        {retraits > 0 && (
+                          <div style={{ flex:1, background:"#4F8EF710", border:"1px solid #4F8EF725", borderRadius:8, padding:"5px 10px", fontSize:10 }}>
+                            <span style={{ color:T.sub }}>⬆️ Retraits : </span>
+                            <span style={{ color:"#00C896", fontWeight:700 }}>+{fF(retraits)}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Alerte critique */}
+                    {actuel !== null && actuel < 5000 && actuel >= 0 && (
+                      <div style={{ marginTop:8, background:"#E6394612", border:"1px solid #E6394635", borderRadius:8, padding:"6px 12px", fontSize:11, color:"#E63946", fontWeight:700 }}>
+                        ⚠️ Float {op} bas — recharge tes unités !
+                      </div>
+                    )}
+                    {actuel !== null && actuel < 0 && (
+                      <div style={{ marginTop:8, background:"#E6394620", border:"1px solid #E6394650", borderRadius:8, padding:"6px 12px", fontSize:11, color:"#E63946", fontWeight:800 }}>
+                        🚨 Float {op} dépassé de {fF(Math.abs(actuel))} !
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
 
             <div style={{ background:T.card, borderRadius:16, padding:desktop?22:18, border:`1px solid ${T.border}` }}>
               <div style={{ fontWeight:800, fontSize:14, marginBottom:16 }}>Dernières opérations</div>
@@ -1626,6 +1768,108 @@ export default function MonPoint() {
               <button onClick={()=>setConfirmLogout(false)} style={{ flex:1, padding:14, borderRadius:12, background:T.hero, border:`1px solid ${T.border2}`, color:T.text, fontWeight:700, cursor:"pointer" }}>Annuler</button>
               <button onClick={handleLogout} style={{ flex:1, padding:14, borderRadius:12, background:"#E63946", border:"none", color:"#fff", fontWeight:800, cursor:"pointer" }}>Déconnexion</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══ MODAL FLOAT / SOLDE DE DÉPART ══════════════════════════════ */}
+      {showFloatModal && (
+        <div style={{ position:"fixed", inset:0, background:"#000D", display:"flex", alignItems:desktop?"center":"flex-end", justifyContent:desktop?"center":"stretch", zIndex:600 }}
+          onClick={()=>setShowFloatModal(false)}>
+          <div onClick={e=>e.stopPropagation()} style={{ background:T.card, borderRadius:desktop?"20px":"22px 22px 0 0", padding:"22px 20px 40px", width:desktop?420:"100%", border:`1px solid #7B2FBE40` }}>
+            {!desktop && <div style={{ width:36, height:4, background:T.border2, borderRadius:2, margin:"0 auto 18px" }} />}
+
+            <div style={{ fontWeight:900, fontSize:18, marginBottom:4 }}>💼 Solde de départ</div>
+            <div style={{ fontSize:12, color:T.sub, marginBottom:20 }}>
+              Entre le montant d'unités disponible ce matin pour chaque opérateur.
+            </div>
+
+            {/* Sélecteur opérateur */}
+            {floatEditOp === null && (
+              <div style={{ marginBottom:18 }}>
+                <div style={{ fontSize:11, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:10 }}>CHOISIR UN OPÉRATEUR</div>
+                <div style={{ display:"flex", gap:8 }}>
+                  {OPERATORS.map(op => (
+                    <button key={op} onClick={()=>{ setFloatEditOp(op); setFloatInput(floats[op]!==null?String(floats[op]):""); }}
+                      style={{ flex:1, padding:"14px 0", borderRadius:12, border:`2px solid ${OP_COLORS[op]}50`, background:`${OP_COLORS[op]}18`, color:OP_COLORS[op], fontWeight:800, fontSize:13, cursor:"pointer" }}>
+                      {op}
+                      {floats[op] !== null && <div style={{ fontSize:9, marginTop:3, opacity:0.8 }}>{fF(floats[op])}</div>}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Saisie montant pour l'opérateur sélectionné */}
+            {floatEditOp !== null && (
+              <>
+                <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:18 }}>
+                  <button onClick={()=>{ setFloatEditOp(null); setFloatInput(""); }}
+                    style={{ background:T.hero, border:`1px solid ${T.border}`, borderRadius:9, padding:"7px 12px", color:T.sub, fontSize:12, cursor:"pointer" }}>← Retour</button>
+                  <div style={{ fontWeight:800, fontSize:15, color:OP_COLORS[floatEditOp] }}>Float {floatEditOp}</div>
+                </div>
+
+                <div style={{ background:`${OP_COLORS[floatEditOp]}12`, border:`1px solid ${OP_COLORS[floatEditOp]}30`, borderRadius:12, padding:"12px 16px", marginBottom:16, fontSize:12, color:T.sub }}>
+                  💡 C'est le montant d'unités sur ton compte <strong style={{color:OP_COLORS[floatEditOp]}}>{floatEditOp}</strong> ce matin avant toute opération.
+                </div>
+
+                <div style={{ marginBottom:18 }}>
+                  <div style={{ fontSize:11, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:8 }}>SOLDE DE DÉPART (FCFA)</div>
+                  <input
+                    type="number"
+                    placeholder="Ex : 150 000"
+                    value={floatInput}
+                    onChange={e => setFloatInput(e.target.value)}
+                    autoFocus
+                    style={{ width:"100%", background:T.input, border:`2px solid ${OP_COLORS[floatEditOp]}`, borderRadius:12, padding:"16px", color:T.text, fontSize:22, fontWeight:800, outline:"none", boxSizing:"border-box", textAlign:"center" }}
+                  />
+                </div>
+
+                {/* Touches rapides */}
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:6, marginBottom:18 }}>
+                  {[25000, 50000, 100000, 200000].map(v => (
+                    <button key={v} onClick={()=>setFloatInput(String(v))}
+                      style={{ padding:"9px 0", borderRadius:9, border:`1px solid ${OP_COLORS[floatEditOp]}30`, background:`${OP_COLORS[floatEditOp]}12`, color:OP_COLORS[floatEditOp], fontWeight:700, fontSize:11, cursor:"pointer" }}>
+                      {v >= 1000 ? `${v/1000}k` : v}
+                    </button>
+                  ))}
+                </div>
+
+                <button
+                  onClick={()=>{
+                    if (!floatInput || isNaN(Number(floatInput))) return;
+                    saveFloat(floatEditOp, floatInput);
+                    setFloatEditOp(null);
+                    setFloatInput("");
+                    setShowFloatModal(false);
+                  }}
+                  disabled={!floatInput || isNaN(Number(floatInput))}
+                  style={{ width:"100%", padding:16, borderRadius:14, background: !floatInput?"#1A1D2E":`linear-gradient(135deg,${OP_COLORS[floatEditOp]},${OP_COLORS[floatEditOp]}CC)`, border:"none", color: !floatInput?T.sub:"#fff", fontWeight:900, fontSize:15, cursor: !floatInput?"not-allowed":"pointer" }}>
+                  ✅ Enregistrer le float {floatEditOp}
+                </button>
+              </>
+            )}
+
+            {/* Résumé des floats déjà définis */}
+            {floatEditOp === null && OPERATORS.some(op => floats[op] !== null) && (
+              <div style={{ marginTop:16, background:T.hero, borderRadius:12, padding:"14px 16px" }}>
+                <div style={{ fontSize:11, color:T.sub, fontWeight:700, marginBottom:10, letterSpacing:1 }}>RÉSUMÉ DU JOUR</div>
+                {OPERATORS.map(op => {
+                  const actuel = calcFloatActuel(op);
+                  if (floats[op] === null) return null;
+                  const color = getFloatColor(actuel, floats[op]);
+                  return (
+                    <div key={op} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+                      <span style={{ fontSize:12, color:OP_COLORS[op], fontWeight:700 }}>{op}</span>
+                      <div style={{ textAlign:"right" }}>
+                        <span style={{ fontSize:13, fontWeight:900, color }}>{fF(actuel)}</span>
+                        <span style={{ fontSize:10, color:T.sub }}> / {fF(floats[op])}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       )}
