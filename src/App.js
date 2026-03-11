@@ -746,6 +746,41 @@ export default function MonPoint() {
     let link = document.querySelector('link[rel="canonical"]');
     if (!link) { link = document.createElement("link"); link.rel = "canonical"; document.head.appendChild(link); }
     link.href = "https://monpoint.site";
+
+    // Favicon SVG — logo M avec point
+    const faviconSVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 52 52">
+      <defs>
+        <linearGradient id="fg" x1="0" y1="0" x2="52" y2="52" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stop-color="#00C896"/>
+          <stop offset="50%" stop-color="#00A5FF"/>
+          <stop offset="100%" stop-color="#7B2FBE"/>
+        </linearGradient>
+      </defs>
+      <rect x="2" y="2" width="48" height="48" rx="14" fill="url(#fg)"/>
+      <path d="M11 37 L11 17 L26 29 L41 17 L41 37" stroke="white" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      <circle cx="26" cy="41" r="3.5" fill="white" opacity="0.95"/>
+    </svg>`;
+
+    const faviconUrl = "data:image/svg+xml," + encodeURIComponent(faviconSVG);
+
+    // Supprimer les anciens favicons
+    document.querySelectorAll('link[rel*="icon"]').forEach(el => el.remove());
+
+    // Ajouter le nouveau favicon
+    const favicon = document.createElement("link");
+    favicon.rel = "icon";
+    favicon.type = "image/svg+xml";
+    favicon.href = faviconUrl;
+    document.head.appendChild(favicon);
+
+    // Apple touch icon
+    const appleIcon = document.createElement("link");
+    appleIcon.rel = "apple-touch-icon";
+    appleIcon.href = faviconUrl;
+    document.head.appendChild(appleIcon);
+
+    // Titre de l'onglet
+    document.title = "Mon Point 💚";
   }, []);
 
   // ── Détection minuit — heure Bénin (UTC+1) ─────────────────────────────────
