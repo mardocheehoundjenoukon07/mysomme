@@ -720,7 +720,42 @@ export default function MonPoint() {
 
   useEffect(() => {
     const saved = lsGet("ms_agent");
-    if (saved) { setAgent(saved); setLocked(true); }
+
+    // Détecter retour depuis FedaPay après paiement
+    const params   = new URLSearchParams(window.location.search);
+    const txStatus = params.get("status") || params.get("transaction_status");
+    const txId     = params.get("transaction_id") || params.get("id") || "fedapay";
+    const isPaid   = ["approved","completed","successful"].includes(txStatus);
+
+    if (saved) {
+      setAgent(saved);
+      if (isPaid) {
+        // Paiement confirmé — activer abonnement automatiquement
+        activerAbonnement(saved.telephone, txId).then(() => {
+          fetchAgent(saved.telephone).then(fresh => {
+            if (fresh) {
+              const trusted = { ...fresh, pin: saved.pin };
+              lsSet("ms_agent", trusted);
+              setAgent(trusted);
+              setShowPaywall(false);
+            }
+          });
+        });
+        window.history.replaceState({}, "", window.location.pathname);
+        setLocked(false);
+      } else {
+        setLocked(true);
+        fetchAgent(saved.telephone).then(fresh => {
+          if (fresh) {
+            const trusted = { ...fresh, pin: saved.pin };
+            lsSet("ms_agent", trusted);
+            setAgent(trusted);
+          }
+        });
+        const cached = lsGet(`ms_txs_${todayStr()}`);
+        if (cached) setTxs(cached);
+      }
+    }
   }, []);
 
   // ── SEO Meta Tags ────────────────────────────────────────────────────────────
