@@ -132,7 +132,7 @@ async function verifyOTP(email, token) {
 
 // ─── PARRAINAGE ───────────────────────────────────────────────────────────────
 function getReferralLink(telephone) {
-  return `${window.location.origin}${window.location.pathname}?ref=${telephone}`;
+  return `https://monpoint.site?ref=${telephone}`;
 }
 function getRefFromURL() {
   try { return new URLSearchParams(window.location.search).get("ref") || null; }
@@ -634,7 +634,7 @@ function PaymentWall({ agent, T, onPaid, onBack }) {
         <div style={{ marginTop:20, background:"#FFB80010", border:"1px solid #FFB80030", borderRadius:14, padding:"14px 16px" }}>
           <div style={{ fontSize:12, color:"#FFB800", fontWeight:700, marginBottom:6 }}>💡 Pas encore prêt à payer ?</div>
           <div style={{ fontSize:11, color:T.sub, marginBottom:10 }}>Invite 1 ami avec ton lien → gagne <strong style={{color:"#FFB800"}}>+16 jours gratuits</strong> avant de payer.</div>
-          <button onClick={()=>{ navigator.clipboard?.writeText(`${window.location.origin}${window.location.pathname}?ref=${agent.telephone}`); alert("Lien copié !"); }}
+          <button onClick={()=>{ navigator.clipboard?.writeText(`https://monpoint.site?ref=${agent.telephone}`); alert("Lien copié !"); }}
             style={{ width:"100%", padding:"9px 0", borderRadius:10, background:"#FFB80020", border:"1px solid #FFB80050", color:"#FFB800", fontWeight:700, fontSize:12, cursor:"pointer" }}>
             📋 Copier mon lien de parrainage
           </button>
@@ -643,6 +643,41 @@ function PaymentWall({ agent, T, onPaid, onBack }) {
       </div>
     </div>
   );
+}
+
+// ─── SEO — BALISES META POUR GOOGLE ──────────────────────────────────────────
+function injectSEO() {
+  // Titre
+  document.title = "Mon Point — Cahier numérique pour agents Mobile Money au Bénin";
+
+  // Meta description
+  let desc = document.querySelector('meta[name="description"]');
+  if (!desc) { desc = document.createElement("meta"); desc.name = "description"; document.head.appendChild(desc); }
+  desc.content = "Mon Point est l'app de gestion pour agents MoMo au Bénin. Enregistrez vos dépôts et retraits MTN, MOOV et Celtiis. Calcul automatique des commissions. Essai gratuit 14 jours.";
+
+  // Keywords
+  let kw = document.querySelector('meta[name="keywords"]');
+  if (!kw) { kw = document.createElement("meta"); kw.name = "keywords"; document.head.appendChild(kw); }
+  kw.content = "agent mobile money bénin, cahier momo bénin, gestion dépôt retrait, MTN MoMo, MOOV Money, Celtiis, application agent momo, mon point, monpoint.site";
+
+  // Open Graph (WhatsApp / Facebook preview)
+  const og = {
+    "og:title":       "Mon Point — Cahier numérique MoMo Bénin",
+    "og:description": "Gère tes dépôts et retraits MoMo facilement. Calcul automatique des commissions. Essai gratuit 14 jours.",
+    "og:url":         "https://monpoint.site",
+    "og:type":        "website",
+    "og:image":       "https://monpoint.site/og-image.png",
+  };
+  Object.entries(og).forEach(([prop, content]) => {
+    let tag = document.querySelector(`meta[property="${prop}"]`);
+    if (!tag) { tag = document.createElement("meta"); tag.setAttribute("property", prop); document.head.appendChild(tag); }
+    tag.content = content;
+  });
+
+  // Canonical URL
+  let canonical = document.querySelector('link[rel="canonical"]');
+  if (!canonical) { canonical = document.createElement("link"); canonical.rel = "canonical"; document.head.appendChild(canonical); }
+  canonical.href = "https://monpoint.site";
 }
 
 // ─── APP PRINCIPALE ───────────────────────────────────────────────────────────
@@ -686,6 +721,31 @@ export default function MonPoint() {
   useEffect(() => {
     const saved = lsGet("ms_agent");
     if (saved) { setAgent(saved); setLocked(true); }
+  }, []);
+
+  // ── SEO Meta Tags ────────────────────────────────────────────────────────────
+  useEffect(() => {
+    document.title = "Mon Point — Cahier numérique pour agents Mobile Money au Bénin";
+    const setMeta = (name, content, prop) => {
+      const attr = prop ? "property" : "name";
+      let el = document.querySelector(`meta[${attr}="${name}"]`);
+      if (!el) { el = document.createElement("meta"); el.setAttribute(attr, name); document.head.appendChild(el); }
+      el.setAttribute("content", content);
+    };
+    setMeta("description", "Mon Point remplace le cahier papier des agents MoMo au Bénin. Enregistrez vos dépôts, retraits et commissions facilement. Essai gratuit 14 jours.");
+    setMeta("keywords", "agent mobile money bénin, cahier numérique momo, gestion dépôt retrait momo, MTN momo bénin, application agent momo, mon point");
+    setMeta("author", "Mon Point");
+    setMeta("og:title", "Mon Point — Cahier numérique agents MoMo Bénin", null, true);
+    setMeta("og:description", "Remplacez votre cahier papier. Gérez vos opérations MoMo facilement.", null, true);
+    setMeta("og:url", "https://monpoint.site", null, true);
+    setMeta("og:type", "website", null, true);
+    setMeta("twitter:card", "summary");
+    setMeta("twitter:title", "Mon Point — Agents MoMo Bénin");
+    setMeta("twitter:description", "Le cahier numérique des agents Mobile Money au Bénin.");
+    // Canonical
+    let link = document.querySelector('link[rel="canonical"]');
+    if (!link) { link = document.createElement("link"); link.rel = "canonical"; document.head.appendChild(link); }
+    link.href = "https://monpoint.site";
   }, []);
 
   // ── Détection minuit — heure Bénin (UTC+1) ─────────────────────────────────
