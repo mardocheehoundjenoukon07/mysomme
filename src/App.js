@@ -536,7 +536,7 @@ function Inscription({ onDone, T }) {
 }
 
 // ─── COMPOSANT MUR DE PAIEMENT ────────────────────────────────────────────────
-const FEDAPAY_PAGE = "https://me.fedapay.com/nIcV-Te5";
+const FEDAPAY_PAGE = "https://me.fedapay.com/46syFfak";
 
 function PaymentWall({ agent, T, onPaid, onBack }) {
   const [checking, setChecking] = useState(false);
