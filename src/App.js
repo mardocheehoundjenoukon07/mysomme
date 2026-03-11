@@ -498,9 +498,9 @@ function Inscription({ onDone, T }) {
             <div style={{ fontSize:12, color:T.sub }}>Vérifie ta boîte mail (et les spams) — valable 10 minutes</div>
           </div>
           <div style={{ marginBottom:20 }}>
-            <div style={{ fontSize:11, color:T.sub, marginBottom:8, fontWeight:700, letterSpacing:1 }}>ENTRE LE CODE À 8 CHIFFRES</div>
+            <div style={{ fontSize:11, color:T.sub, marginBottom:8, fontWeight:700, letterSpacing:1 }}>ENTRE LE CODE À 6 CHIFFRES</div>
             <input
-              type="number" placeholder="12345678" value={otp} onChange={e=>setOtp(e.target.value.slice(0,6))}
+              type="number" placeholder="123456" value={otp} onChange={e=>setOtp(e.target.value.slice(0,6))}
               style={{ ...inp, fontSize:28, fontWeight:900, textAlign:"center", letterSpacing:8 }}
             />
           </div>
