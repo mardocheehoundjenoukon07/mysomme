@@ -336,7 +336,7 @@ function Inscription({ onDone, T }) {
 
   // ── INSCRIPTION : vérification OTP ──
   async function handleVerifyOTP() {
-    if (otp.length < 8) { setError("Le code fait 8 chiffres"); return; }
+    if (otp.length < 6) { setError("Le code fait 6 chiffres"); return; }
     setLoading(true); setError("");
     const ok = await verifyOTP(form.email, otp);
     setLoading(false);
@@ -500,7 +500,7 @@ function Inscription({ onDone, T }) {
           <div style={{ marginBottom:20 }}>
             <div style={{ fontSize:11, color:T.sub, marginBottom:8, fontWeight:700, letterSpacing:1 }}>ENTRE LE CODE À 8 CHIFFRES</div>
             <input
-              type="number" placeholder="12345678" value={otp} onChange={e=>setOtp(e.target.value.slice(0,8))}
+              type="number" placeholder="12345678" value={otp} onChange={e=>setOtp(e.target.value.slice(0,6))}
               style={{ ...inp, fontSize:28, fontWeight:900, textAlign:"center", letterSpacing:8 }}
             />
           </div>
@@ -1204,7 +1204,7 @@ export default function MonPoint() {
               <div style={{ fontWeight:800, fontSize:14, marginBottom:16 }}>Dernières opérations</div>
               {loading && <div style={{ textAlign:"center", color:T.faint, padding:"24px 0", fontSize:13 }}>⏳ Chargement…</div>}
               {!loading && txs.length===0 && <div style={{ textAlign:"center", color:T.faint, padding:"32px 0", fontSize:13 }}>{isToday?"Aucune opération · Appuie sur ⬇️ ou ⬆️":"Aucune opération ce jour"}</div>}
-              {txs.slice(0,8).map((t,i)=>(
+              {txs.slice(0,6).map((t,i)=>(
                 <div key={t.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"11px 0", borderBottom:i<Math.min(txs.length,8)-1?`1px solid ${T.border}`:"none" }}>
                   <div style={{ width:38, height:38, borderRadius:11, background:`${TYPE_COLOR[t.type]}15`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:17, flexShrink:0 }}>{TYPE_ICON[t.type]}</div>
                   <div style={{ flex:1, minWidth:0 }}>
