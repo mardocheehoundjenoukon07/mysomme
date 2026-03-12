@@ -1009,8 +1009,8 @@ export default function MonPoint() {
     const forfaitsVendus = txs.filter(t=>t.type==="forfait");
     const internetCount = txs.filter(t=>t.type==="forfait"&&t.forfait==="internet").length;
     const appelCount    = txs.filter(t=>t.type==="forfait"&&t.forfait==="appel").length;
-    const creditCount   = txs.filter(t=>t.type==="forfait"&&t.forfait==="credit").length;
-    const forfaitLine   = forfaitsVendus.length > 0 ? `\n📦 Forfaits : ${forfaitsVendus.length} | 🌐 Internet: ${internetCount} | 📞 Appel: ${appelCount} | 💳 Crédit: ${creditCount}\n💵 Total forfaits : ${fF(sum(t=>t.type==="forfait"))}` : "";
+    const creditCount   = txs.filter(t=>t.type==="forfait"&&t.forfait==="simple").length;
+    const forfaitLine   = forfaitsVendus.length > 0 ? `\n📦 Forfaits : ${forfaitsVendus.length} | 🌐 Internet: ${internetCount} | 📞 Appel: ${appelCount} | 📱 Simple: ${creditCount}\n💵 Total forfaits : ${fF(sum(t=>t.type==="forfait"))}` : "";
     const floatLines = OPERATORS.map(op => {
       const actuel = calcFloatActuel(op);
       if (actuel === null) return null;
@@ -1318,24 +1318,12 @@ export default function MonPoint() {
               })}
             </div>
 
-            {/* ══ RÉSUMÉ DU JOUR ══ */}
-            <div style={{ background:`linear-gradient(135deg,${T.hero},${T.card})`, borderRadius:18, padding:desktop?22:16, marginBottom:14, border:`1px solid ${T.border2}` }}>
-              <div style={{ display:"flex", gap:desktop?28:14, flexWrap:"wrap" }}>
-                <div><div style={{ fontSize:11, color:T.sub }}>Opérations</div><div style={{ fontSize:22, fontWeight:800 }}>{txs.filter(t=>t.type!=="forfait").length}</div></div>
-                <div><div style={{ fontSize:11, color:T.sub }}>Commission</div><div style={{ fontSize:22, fontWeight:800, color:"#FFB800" }}>{fF(totalCom)}</div></div>
-                <div><div style={{ fontSize:11, color:T.sub }}>📦 Forfaits</div><div style={{ fontSize:22, fontWeight:800, color:"#9B5FDE" }}>{txs.filter(t=>t.type==="forfait").length}</div></div>
-                <div><div style={{ fontSize:11, color:T.sub }}>🌐 Internet</div><div style={{ fontSize:20, fontWeight:800, color:"#00A5FF" }}>{txs.filter(t=>t.type==="forfait"&&t.forfait==="internet").length}</div></div>
-                <div><div style={{ fontSize:11, color:T.sub }}>📞 Appel</div><div style={{ fontSize:20, fontWeight:800, color:"#00C896" }}>{txs.filter(t=>t.type==="forfait"&&t.forfait==="appel").length}</div></div>
-                <div><div style={{ fontSize:11, color:T.sub }}>💳 Crédit</div><div style={{ fontSize:20, fontWeight:800, color:"#FFB800" }}>{txs.filter(t=>t.type==="forfait"&&t.forfait==="credit").length}</div></div>
-              </div>
-            </div>
-
-            {/* ══ VENTE FORFAITS — 3 TAPS ══ */}
+            {/* ══ VENTE UNITÉS — 3 TAPS ══ */}
             {isToday && (
             <div style={{ background:T.card, borderRadius:16, padding:desktop?22:18, marginBottom:14, border:`1px solid #9B5FDE30` }}>
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
                 <div>
-                  <div style={{ fontWeight:800, fontSize:14 }}>📦 Vente de forfaits</div>
+                  <div style={{ fontWeight:800, fontSize:14 }}>📦 Vente d'unités</div>
                   <div style={{ fontSize:11, color:T.sub, marginTop:2 }}>Enregistre en 3 taps</div>
                 </div>
                 <div style={{ fontSize:11, color:"#9B5FDE", fontWeight:700 }}>{txs.filter(t=>t.type==="forfait").length} vendu{txs.filter(t=>t.type==="forfait").length>1?"s":""}</div>
@@ -1345,7 +1333,7 @@ export default function MonPoint() {
               <div style={{ marginBottom:12 }}>
                 <div style={{ fontSize:10, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:8 }}>1 — TYPE</div>
                 <div style={{ display:"flex", gap:8 }}>
-                  {[["internet","🌐","Internet"],["appel","📞","Appel"],["credit","💳","Crédit"]].map(([k,ico,lbl])=>(
+                  {[["internet","🌐","Internet"],["appel","📞","Appel"],["simple","📱","Simple"]].map(([k,ico,lbl])=>(
                     <button key={k} onClick={()=>setForm(f=>({...f, forfaitType:f.forfaitType===k?null:k, forfaitPrix:null}))}
                       style={{ flex:1, padding:"10px 4px", borderRadius:11, border:`2px solid ${form.forfaitType===k?"#9B5FDE":T.border}`, background:form.forfaitType===k?"#9B5FDE18":"transparent", color:form.forfaitType===k?"#9B5FDE":T.sub, fontWeight:800, fontSize:12, cursor:"pointer", textAlign:"center" }}>
                       <div style={{ fontSize:16 }}>{ico}</div>
@@ -1410,7 +1398,7 @@ export default function MonPoint() {
                 <button onClick={async ()=>{
                   setSaving(true);
                   const localId = Date.now();
-                  const typeLabels = {internet:"🌐 Internet",appel:"📞 Appel",credit:"💳 Crédit"};
+                  const typeLabels = {internet:"🌐 Internet",appel:"📞 Appel",credit:"📱 Simple"};
                   const tx = {
                     type:"forfait", operateur:form.forfaitOp,
                     montant:Number(form.forfaitPrix), commission:0,
@@ -1437,7 +1425,11 @@ export default function MonPoint() {
             )}
 
             <div style={{ background:T.card, borderRadius:16, padding:desktop?22:18, marginBottom:14, border:`1px solid ${T.border}` }}>
-              <div style={{ fontWeight:800, fontSize:14, marginBottom:16 }}>Par opérateur</div>
+              <button onClick={shareReport} style={{ width:"100%", padding:16, borderRadius:16, background:"linear-gradient(135deg,#25D366,#128C7E)", border:"none", color:"#fff", fontWeight:800, fontSize:14, cursor:"pointer", marginBottom:14, display:"flex", alignItems:"center", justifyContent:"center", gap:10 }}>
+              <span style={{ fontSize:20 }}>📤</span> Envoyer le point du jour sur WhatsApp
+            </button>
+
+            <div style={{ fontWeight:800, fontSize:14, marginBottom:16 }}>Par opérateur</div>
               {OPERATORS.map((op,i)=>{
                 const o = txs.filter(t=>t.operateur===op);
                 return (
@@ -1445,7 +1437,7 @@ export default function MonPoint() {
                     <div style={{ width:36, height:36, background:OP_BG[op], border:`1px solid ${OP_COLORS[op]}40`, borderRadius:10, display:"flex", alignItems:"center", justifyContent:"center", fontSize:9, fontWeight:900, color:OP_COLORS[op], flexShrink:0 }}>{op}</div>
                     <div style={{ flex:1 }}>
                       <div style={{ fontSize:13, fontWeight:700 }}>{op}</div>
-                      <div style={{ fontSize:11, color:T.sub }}>{o.length} op. · comm. {fF(o.reduce((s,t)=>s+Number(t.commission),0))}</div>
+                      <div style={{ fontSize:11, color:T.sub }}>{o.length} opération{o.length>1?"s":""}</div>
                     </div>
                     <div style={{ fontWeight:900, color:OP_COLORS[op], fontSize:15 }}>{fF(o.reduce((s,t)=>s+Number(t.montant),0))}</div>
                   </div>
@@ -1453,9 +1445,7 @@ export default function MonPoint() {
               })}
             </div>
 
-            <button onClick={shareReport} style={{ width:"100%", padding:16, borderRadius:16, background:"linear-gradient(135deg,#25D366,#128C7E)", border:"none", color:"#fff", fontWeight:800, fontSize:14, cursor:"pointer", marginBottom:14, display:"flex", alignItems:"center", justifyContent:"center", gap:10 }}>
-              <span style={{ fontSize:20 }}>📤</span> Envoyer le point du jour sur WhatsApp
-            </button>
+           
 
             <div style={{ background:T.card, borderRadius:16, padding:desktop?22:18, border:`1px solid ${T.border}` }}>
               <div style={{ fontWeight:800, fontSize:14, marginBottom:16 }}>Dernières opérations</div>
@@ -1470,7 +1460,7 @@ export default function MonPoint() {
                   </div>
                   <div style={{ textAlign:"right", flexShrink:0 }}>
                     <div style={{ fontWeight:900, color:TYPE_COLOR[t.type], fontSize:14 }}>{fF(t.montant)}</div>
-                    <div style={{ fontSize:11, color:T.sub }}>+{fF(t.commission)}</div>
+                    <div style={{ fontSize:11, color:T.sub }}>{t.heure||""}</div>
                   </div>
                   {isToday && <button onClick={()=>setConfirm(t.id)} style={{ background:"none", border:"none", color:T.faint, cursor:"pointer", fontSize:15, flexShrink:0, padding:"0 4px" }}>🗑️</button>}
                 </div>
@@ -1535,7 +1525,7 @@ export default function MonPoint() {
                     <div style={{ display:"flex", alignItems:"center", gap:10 }}>
                       <div style={{ textAlign:"right" }}>
                         <div style={{ fontWeight:900, color:TYPE_COLOR[t.type], fontSize:15 }}>{fF(t.montant)}</div>
-                        <div style={{ fontSize:11, color:T.sub }}>+{fF(t.commission)}</div>
+                        <div style={{ fontSize:11, color:T.sub }}>{t.heure||""}</div>
                       </div>
                       {isToday && <button onClick={()=>setConfirm(t.id)} style={{ background:"none", border:"none", color:T.faint, cursor:"pointer", fontSize:15, padding:4 }}>🗑️</button>}
                     </div>
