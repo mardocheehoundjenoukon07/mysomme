@@ -223,9 +223,9 @@ const OPERATORS  = ["MTN","MOOV","Celtiis"];
 const OP_COLORS  = { MTN:"#FFB800", MOOV:"#0066CC", Celtiis:"#E63946" };
 const OP_BG_D    = { MTN:"#FFB80018", MOOV:"#0066CC18", Celtiis:"#E6394618" };
 const OP_BG_L    = { MTN:"#FFB80028", MOOV:"#0066CC20", Celtiis:"#E6394620" };
-const TYPE_COLOR = { depot:"#00C896", retrait:"#4F8EF7" };
-const TYPE_ICON  = { depot:"⬇️", retrait:"⬆️" };
-const TYPE_LABEL = { depot:"Dépôt", retrait:"Retrait" };
+const TYPE_COLOR = { depot:"#00C896", retrait:"#4F8EF7", forfait:"#9B5FDE" };
+const TYPE_ICON  = { depot:"⬇️", retrait:"⬆️", forfait:"📦" };
+const TYPE_LABEL = { depot:"Dépôt", retrait:"Retrait", forfait:"Forfait" };
 const JOURS      = ["Dim","Lun","Mar","Mer","Jeu","Ven","Sam"];
 const MOIS_FR    = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
 const fF = n => Number(n||0).toLocaleString("fr-FR") + " F";
@@ -1006,12 +1006,14 @@ export default function MonPoint() {
 
   function shareReport() {
     const dateLabel = new Date(selectedDate).toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
+    const forfaitsVendus = txs.filter(t=>t.type==="forfait");
+    const forfaitLine = forfaitsVendus.length > 0 ? `\n📦 Forfaits vendus : ${forfaitsVendus.length} (${fF(sum(t=>t.type==="forfait"))})` : "";
     const floatLines = OPERATORS.map(op => {
       const actuel = calcFloatActuel(op);
       if (actuel === null) return null;
       return `💼 Solde ${op} : ${fF(actuel)}`;
     }).filter(Boolean).join("\n");
-    const text = `📊 *Point du jour — Mon Point*\n📅 ${dateLabel}\n👤 Agent : ${agent.nom}\n\n⬇️ Dépôts : ${fF(sum(t=>t.type==="depot"))}\n⬆️ Retraits : ${fF(sum(t=>t.type==="retrait"))}\n\n💰 *CA Total : ${fF(totalCA)}*\n✅ *Commission : ${fF(totalCom)}*${floatLines?"\n\n"+floatLines:""}\n\n_Généré par Mon Point_`;
+    const text = `📊 *Point du jour — Mon Point*\n📅 ${dateLabel}\n👤 Agent : ${agent.nom}\n\n⬇️ Dépôts : ${fF(sum(t=>t.type==="depot"))}\n⬆️ Retraits : ${fF(sum(t=>t.type==="retrait"))}${forfaitLine}\n\n💰 *CA Total : ${fF(totalCA)}*\n✅ *Commission : ${fF(totalCom)}*${floatLines?"\n\n"+floatLines:""}\n\n_Généré par Mon Point_`;
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
   }
 
@@ -1035,7 +1037,6 @@ export default function MonPoint() {
     ["accueil","🏠","Accueil"],
     ["stats","📊","Statistiques"],
     ["historique","🗂️","Historique"],
-    ["tarifs","📋","Tarifs"],
     ["profil","👤","Profil"],
   ];
 
@@ -1066,8 +1067,8 @@ export default function MonPoint() {
 
       {/* FLASH */}
       {flash && (
-        <div style={{ position:"fixed", top:20, left:"50%", transform:"translateX(-50%)", background:TYPE_COLOR[flash], color:"#fff", borderRadius:14, padding:"12px 28px", fontWeight:800, fontSize:14, zIndex:9999, boxShadow:"0 4px 24px #0009", whiteSpace:"nowrap" }}>
-          ✅ {TYPE_LABEL[flash]} enregistré !
+        <div style={{ position:"fixed", top:20, left:"50%", transform:"translateX(-50%)", background:TYPE_COLOR[flash]||"#9B5FDE", color:"#fff", borderRadius:14, padding:"12px 28px", fontWeight:800, fontSize:14, zIndex:9999, boxShadow:"0 4px 24px #0009", whiteSpace:"nowrap" }}>
+          ✅ {TYPE_LABEL[flash]||"Forfait"} enregistré !
         </div>
       )}
 
@@ -1325,18 +1326,123 @@ export default function MonPoint() {
 
             <div style={{ display:"grid", gridTemplateColumns:desktop?"repeat(3,1fr)":"1fr 1fr", gap:10, marginBottom:14 }}>
               {[
-                { label:"Dépôts",    value:sum(t=>t.type==="depot"),   c:com(t=>t.type==="depot"),   icon:"⬇️", color:"#00C896" },
-                { label:"Retraits",  value:sum(t=>t.type==="retrait"), c:com(t=>t.type==="retrait"), icon:"⬆️", color:"#4F8EF7" },
-                { label:"Commission totale", value:totalCom, c:null, icon:"💰", color:"#FFB800" },
+                { label:"Dépôts",   value:sum(t=>t.type==="depot"),   icon:"⬇️", color:"#00C896" },
+                { label:"Retraits", value:sum(t=>t.type==="retrait"), icon:"⬆️", color:"#4F8EF7" },
+                { label:"Forfaits", value:sum(t=>t.type==="forfait"), icon:"📦", color:"#9B5FDE" },
               ].map((s,i)=>(
                 <div key={i} style={{ background:T.card, borderRadius:16, padding:desktop?20:16, border:`1px solid ${s.color}22` }}>
-                  <div style={{ fontSize:24 }}>{s.icon}</div>
-                  <div style={{ fontSize:desktop?22:20, fontWeight:900, color:s.color, marginTop:8 }}>{fF(s.value)}</div>
-                  {s.c!==null && <div style={{ fontSize:11, color:T.sub, marginTop:3 }}>comm. {fF(s.c)}</div>}
+                  <div style={{ fontSize:22 }}>{s.icon}</div>
+                  <div style={{ fontSize:desktop?20:18, fontWeight:900, color:s.color, marginTop:8 }}>{fF(s.value)}</div>
                   <div style={{ fontSize:11, color:T.faint, marginTop:4 }}>{s.label}</div>
                 </div>
               ))}
             </div>
+
+            {/* ══ VENTE FORFAITS — 3 TAPS ══ */}
+            {isToday && (
+            <div style={{ background:T.card, borderRadius:16, padding:desktop?22:18, marginBottom:14, border:`1px solid #9B5FDE30` }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
+                <div>
+                  <div style={{ fontWeight:800, fontSize:14 }}>📦 Vente de forfaits</div>
+                  <div style={{ fontSize:11, color:T.sub, marginTop:2 }}>Enregistre en 3 taps</div>
+                </div>
+                <div style={{ fontSize:11, color:"#9B5FDE", fontWeight:700 }}>{txs.filter(t=>t.type==="forfait").length} vendu{txs.filter(t=>t.type==="forfait").length>1?"s":""}</div>
+              </div>
+
+              {/* Étape 1 — Type de forfait */}
+              <div style={{ marginBottom:12 }}>
+                <div style={{ fontSize:10, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:8 }}>1 — TYPE</div>
+                <div style={{ display:"flex", gap:8 }}>
+                  {[["internet","🌐","Internet"],["appel","📞","Appel"],["credit","💳","Crédit"]].map(([k,ico,lbl])=>(
+                    <button key={k} onClick={()=>setForm(f=>({...f, forfaitType:f.forfaitType===k?null:k, forfaitPrix:null}))}
+                      style={{ flex:1, padding:"10px 4px", borderRadius:11, border:`2px solid ${form.forfaitType===k?"#9B5FDE":T.border}`, background:form.forfaitType===k?"#9B5FDE18":"transparent", color:form.forfaitType===k?"#9B5FDE":T.sub, fontWeight:800, fontSize:12, cursor:"pointer", textAlign:"center" }}>
+                      <div style={{ fontSize:16 }}>{ico}</div>
+                      <div style={{ marginTop:2 }}>{lbl}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Étape 2 — Opérateur */}
+              {form.forfaitType && (
+                <div style={{ marginBottom:12 }}>
+                  <div style={{ fontSize:10, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:8 }}>2 — RÉSEAU</div>
+                  <div style={{ display:"flex", gap:8 }}>
+                    {OPERATORS.map(op=>(
+                      <button key={op} onClick={()=>setForm(f=>({...f, forfaitOp:f.forfaitOp===op?null:op, forfaitPrix:null}))}
+                        style={{ flex:1, padding:"10px 0", borderRadius:11, border:`2px solid ${form.forfaitOp===op?OP_COLORS[op]:T.border}`, background:form.forfaitOp===op?OP_BG[op]:"transparent", color:form.forfaitOp===op?OP_COLORS[op]:T.sub, fontWeight:800, fontSize:13, cursor:"pointer" }}>
+                        {op}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Étape 3 — Prix */}
+              {form.forfaitType && form.forfaitOp && (()=>{
+                const GRILLES = {
+                  MTN: {
+                    internet:[100,300,500,1000,2000,3500,6000,15100,20000,25000,30000,50000,75000,100000],
+                    appel:   [100,150,200,300,500,1000,1500,2500,5000],
+                    credit:  [100,200,500,1000,2000,5000,10000],
+                  },
+                  MOOV: {
+                    internet:[200,500,1000,2000,4500,8000,15000,15500,20000,50000],
+                    appel:   [100,200,500,1000,2500,5000],
+                    credit:  [100,200,500,1000,2000,5000],
+                  },
+                  Celtiis: {
+                    internet:[1000,3000,5000,10000,20000],
+                    appel:   [100,150,200,500,1500,3000,5000,10000],
+                    credit:  [200,500,1000,2000,5000],
+                  },
+                };
+                const prix = GRILLES[form.forfaitOp]?.[form.forfaitType] || [];
+                return (
+                  <div style={{ marginBottom:12 }}>
+                    <div style={{ fontSize:10, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:8 }}>3 — MONTANT</div>
+                    <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+                      {prix.map(p=>(
+                        <button key={p} onClick={()=>setForm(f=>({...f, forfaitPrix:p}))}
+                          style={{ padding:"7px 12px", borderRadius:9, border:`2px solid ${form.forfaitPrix===p?OP_COLORS[form.forfaitOp]:T.border}`, background:form.forfaitPrix===p?OP_BG[form.forfaitOp]:"transparent", color:form.forfaitPrix===p?OP_COLORS[form.forfaitOp]:T.sub, fontWeight:700, fontSize:12, cursor:"pointer" }}>
+                          {p>=1000?(p/1000)+"k":p} F
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Bouton enregistrer forfait */}
+              {form.forfaitType && form.forfaitOp && form.forfaitPrix && (
+                <button onClick={async ()=>{
+                  setSaving(true);
+                  const localId = Date.now();
+                  const typeLabels = {internet:"🌐 Internet",appel:"📞 Appel",credit:"💳 Crédit"};
+                  const tx = {
+                    type:"forfait", operateur:form.forfaitOp,
+                    montant:Number(form.forfaitPrix), commission:0,
+                    client:typeLabels[form.forfaitType]||"Forfait",
+                    telephone:null, forfait:form.forfaitType,
+                    heure:new Date().toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}),
+                    user_id:agent.telephone, localId, created_at:nowISO()
+                  };
+                  const optimistic = {...tx, id:localId};
+                  setTxs(p=>[optimistic,...p]);
+                  const saved = await saveTxRemote(tx);
+                  if(saved){setTxs(p=>p.map(t=>t.id===localId?saved:t));}
+                  else{const pend=lsGet(pendKey(agent.telephone))||[];lsSet(pendKey(agent.telephone),[...pend,tx]);setPendingCount(c=>c+1);}
+                  const cached=lsGet(txKey(selectedDate,agent.telephone))||[];
+                  lsSet(txKey(selectedDate,agent.telephone),[saved||optimistic,...cached]);
+                  setSaving(false); setForm({}); setFlash("forfait"); setTimeout(()=>setFlash(null),2200);
+                  setTimeout(()=>loadTxs(selectedDate),1200);
+                }} disabled={saving}
+                  style={{ width:"100%", padding:14, borderRadius:12, background:saving?"#1A1D2E":"linear-gradient(135deg,#9B5FDE,#7B2FBE)", border:"none", color:saving?T.sub:"#fff", fontWeight:900, fontSize:14, cursor:saving?"not-allowed":"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+                  {saving?"⏳ Sauvegarde…":`✅ Enregistrer — ${form.forfaitOp} ${form.forfaitType} ${fF(form.forfaitPrix)}`}
+                </button>
+              )}
+            </div>
+            )}
 
             <div style={{ background:T.card, borderRadius:16, padding:desktop?22:18, marginBottom:14, border:`1px solid ${T.border}` }}>
               <div style={{ fontWeight:800, fontSize:14, marginBottom:16 }}>Par opérateur</div>
@@ -1446,131 +1552,6 @@ export default function MonPoint() {
               </div>
             </div>
           )}
-
-          {/* ══ TARIFS ══ */}
-          {tab==="tarifs" && (() => {
-            const MTN_INTERNET_VOL = [
-              {vol:"70 Mo",prix:100},{vol:"250 Mo",prix:300},{vol:"450 Mo",prix:500},
-              {vol:"850 Mo",prix:1000},{vol:"1,7 Go",prix:2000},{vol:"3 Go",prix:3500},{vol:"5,7 Go",prix:6000},
-            ];
-            const MTN_INTERNET_ILL = [
-              {vol:"20 Go+",prix:15100},{vol:"40 Go+",prix:20000},{vol:"80 Go+",prix:25000},
-              {vol:"100 Go+",prix:30000},{vol:"175 Go+",prix:50000},{vol:"290 Go+",prix:75000},{vol:"400 Go+",prix:100000},
-            ];
-            const MTN_APPEL = [
-              {label:"100 F / 24h",prix:100},{label:"150 F / 24h",prix:150},{label:"200 F / 24h",prix:200},
-              {label:"300 F / 24h",prix:300},{label:"500 F / 24h",prix:500},{label:"1 000 F / 7j",prix:1000},
-              {label:"1 500 F / 7j",prix:1500},{label:"2 500 F / 30j",prix:2500},{label:"5 000 F / 30j",prix:5000},
-            ];
-            const MOOV_INTERNET_ILL = [
-              {vol:"40 Go",prix:15500},{vol:"60 Go",prix:20000},{vol:"500 Go",prix:50000},
-            ];
-            const MOOV_INTERNET_VOL = [
-              {vol:"150 Mo",prix:200},{vol:"400 Mo",prix:500},{vol:"1 Go",prix:1000},
-              {vol:"2 Go",prix:2000},{vol:"5 Go",prix:4500},{vol:"10 Go",prix:8000},{vol:"20 Go",prix:15000},
-            ];
-            const MOOV_APPEL = [
-              {label:"100 F / 24h",prix:100},{label:"200 F / 24h",prix:200},{label:"500 F / 7j",prix:500},
-              {label:"1 000 F / 30j",prix:1000},{label:"2 500 F / 30j",prix:2500},{label:"5 000 F / 30j",prix:5000},
-            ];
-            const CELTIIS_INTERNET = [
-              {vol:"1,4 Go / 7j",prix:1000},{vol:"4,2 Go / 30j",prix:3000},
-              {vol:"10 Go / 30j",prix:5000},{vol:"25 Go / 30j",prix:10000},
-            ];
-            const CELTIIS_ILLIMINET = [
-              {vol:"50 Go+ / 30j",prix:10000},{vol:"100 Go+ / 30j",prix:20000},
-            ];
-            const CELTIIS_APPEL = [
-              {label:"100 F",prix:100},{label:"150 F",prix:150},{label:"200 F",prix:200},
-              {label:"500 F = 8 min",prix:500},{label:"1 500 F = 125 min",prix:1500},
-              {label:"3 000 F = 250 min",prix:3000},{label:"5 000 F = 417 min",prix:5000},
-              {label:"10 000 F = 833 min",prix:10000},
-            ];
-
-            const PriceRow = ({label, prix, color}) => (
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 0", borderBottom:`1px solid ${T.border}` }}>
-                <span style={{ fontSize:13, color:T.text }}>{label}</span>
-                <span style={{ fontSize:13, fontWeight:800, color:color||T.text }}>{fF(prix)}</span>
-              </div>
-            );
-
-            const Section = ({title, color, children}) => (
-              <div style={{ background:T.card, borderRadius:14, padding:16, marginBottom:12, border:`1px solid ${color}22` }}>
-                <div style={{ fontSize:11, color, fontWeight:800, letterSpacing:1, marginBottom:10 }}>{title}</div>
-                {children}
-              </div>
-            );
-
-            return (
-              <div>
-                <div style={{ fontWeight:900, fontSize:desktop?20:18, marginBottom:20 }}>📋 Tarifs & Forfaits</div>
-
-                {/* ── MTN ── */}
-                <div style={{ background:`${OP_COLORS.MTN}15`, border:`2px solid ${OP_COLORS.MTN}40`, borderRadius:16, padding:16, marginBottom:16 }}>
-                  <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:14 }}>
-                    <div style={{ width:36, height:36, background:OP_BG_D.MTN, border:`2px solid ${OP_COLORS.MTN}`, borderRadius:10, display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:900, color:OP_COLORS.MTN }}>MTN</div>
-                    <div style={{ fontWeight:900, fontSize:16, color:OP_COLORS.MTN }}>MTN Bénin</div>
-                  </div>
-                  <Section title="🌐 INTERNET — VOLUME (code: *123*77*montant#)" color={OP_COLORS.MTN}>
-                    {MTN_INTERNET_VOL.map(r=><PriceRow key={r.prix} label={r.vol} prix={r.prix} color={OP_COLORS.MTN}/>)}
-                  </Section>
-                  <Section title="🌐 INTERNET — ILLIMITÉ (vitesse réduite après quota)" color={OP_COLORS.MTN}>
-                    {MTN_INTERNET_ILL.map(r=><PriceRow key={r.prix} label={r.vol} prix={r.prix} color={OP_COLORS.MTN}/>)}
-                  </Section>
-                  <Section title="📞 FORFAITS APPEL — Forfait Maxi (code: *173#)" color={OP_COLORS.MTN}>
-                    {MTN_APPEL.map(r=><PriceRow key={r.prix} label={r.label} prix={r.prix} color={OP_COLORS.MTN}/>)}
-                  </Section>
-                  <div style={{ background:`${OP_COLORS.MTN}10`, borderRadius:10, padding:"10px 14px", fontSize:12, color:T.sub }}>
-                    💳 <strong style={{color:OP_COLORS.MTN}}>Crédit simple :</strong> à partir de <strong>100 F</strong> en tout point de vente
-                  </div>
-                </div>
-
-                {/* ── MOOV ── */}
-                <div style={{ background:`${OP_COLORS.MOOV}15`, border:`2px solid ${OP_COLORS.MOOV}40`, borderRadius:16, padding:16, marginBottom:16 }}>
-                  <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:14 }}>
-                    <div style={{ width:36, height:36, background:OP_BG_D.MOOV, border:`2px solid ${OP_COLORS.MOOV}`, borderRadius:10, display:"flex", alignItems:"center", justifyContent:"center", fontSize:9, fontWeight:900, color:OP_COLORS.MOOV }}>MOOV</div>
-                    <div style={{ fontWeight:900, fontSize:16, color:OP_COLORS.MOOV }}>Moov Africa Bénin</div>
-                  </div>
-                  <Section title="🌐 INTERNET — VOLUME (code: *123*5#)" color={OP_COLORS.MOOV}>
-                    {MOOV_INTERNET_VOL.map(r=><PriceRow key={r.prix} label={r.vol} prix={r.prix} color={OP_COLORS.MOOV}/>)}
-                  </Section>
-                  <Section title="🌐 INTERNET — ILLIMITÉ" color={OP_COLORS.MOOV}>
-                    {MOOV_INTERNET_ILL.map(r=><PriceRow key={r.prix} label={r.vol} prix={r.prix} color={OP_COLORS.MOOV}/>)}
-                  </Section>
-                  <Section title="📞 FORFAITS APPEL (code: *855*3*2#)" color={OP_COLORS.MOOV}>
-                    {MOOV_APPEL.map(r=><PriceRow key={r.prix} label={r.label} prix={r.prix} color={OP_COLORS.MOOV}/>)}
-                  </Section>
-                  <div style={{ background:`${OP_COLORS.MOOV}10`, borderRadius:10, padding:"10px 14px", fontSize:12, color:T.sub }}>
-                    💳 <strong style={{color:OP_COLORS.MOOV}}>Crédit simple :</strong> via <strong>*855#</strong> → option 3 · à partir de <strong>100 F</strong>
-                  </div>
-                </div>
-
-                {/* ── CELTIIS ── */}
-                <div style={{ background:`${OP_COLORS.Celtiis}15`, border:`2px solid ${OP_COLORS.Celtiis}40`, borderRadius:16, padding:16, marginBottom:16 }}>
-                  <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:14 }}>
-                    <div style={{ width:36, height:36, background:OP_BG_D.Celtiis, border:`2px solid ${OP_COLORS.Celtiis}`, borderRadius:10, display:"flex", alignItems:"center", justifyContent:"center", fontSize:8, fontWeight:900, color:OP_COLORS.Celtiis }}>CELT</div>
-                    <div style={{ fontWeight:900, fontSize:16, color:OP_COLORS.Celtiis }}>Celtiis Bénin</div>
-                  </div>
-                  <Section title="🌐 INTERNET — Forfait Connect (code: *199*2#)" color={OP_COLORS.Celtiis}>
-                    {CELTIIS_INTERNET.map(r=><PriceRow key={r.prix} label={r.vol} prix={r.prix} color={OP_COLORS.Celtiis}/>)}
-                  </Section>
-                  <Section title="🌐 INTERNET — IllimiNet + appels/SMS illimités (code: *199*8#)" color={OP_COLORS.Celtiis}>
-                    {CELTIIS_ILLIMINET.map(r=><PriceRow key={r.prix} label={r.vol} prix={r.prix} color={OP_COLORS.Celtiis}/>)}
-                  </Section>
-                  <Section title="📞 FORFAITS APPEL — Top Appel (code: *199*1*2#) — 1F/sec tous réseaux" color={OP_COLORS.Celtiis}>
-                    {CELTIIS_APPEL.map(r=><PriceRow key={r.prix} label={r.label} prix={r.prix} color={OP_COLORS.Celtiis}/>)}
-                  </Section>
-                  <div style={{ background:`${OP_COLORS.Celtiis}10`, borderRadius:10, padding:"10px 14px", fontSize:12, color:T.sub }}>
-                    💳 <strong style={{color:OP_COLORS.Celtiis}}>Crédit simple :</strong> à partir de <strong>200 F</strong> · SMS : <strong>5 F</strong> tous réseaux
-                  </div>
-                </div>
-
-                <div style={{ background:T.hero, borderRadius:12, padding:"12px 16px", fontSize:11, color:T.sub, textAlign:"center" }}>
-                  ℹ️ Tarifs indicatifs — peuvent varier selon les promotions opérateurs
-                </div>
-              </div>
-            );
-          })()}
 
           {/* ══ PROFIL ══ */}
           {tab==="profil" && (
@@ -1794,12 +1775,6 @@ export default function MonPoint() {
               <div style={{ fontSize:11, color:T.sub, marginBottom:8, fontWeight:700, letterSpacing:1 }}>MONTANT (FCFA)</div>
               <input type="number" placeholder="Ex : 5000" value={form.montant||""} onChange={e=>setForm(f=>({...f,montant:e.target.value}))}
                 style={{ width:"100%", background:T.input, border:`2px solid ${T.border}`, borderRadius:12, padding:"14px 16px", color:T.text, fontSize:20, fontWeight:700, outline:"none", boxSizing:"border-box" }} />
-            </div>
-
-            <div style={{ marginBottom:14 }}>
-              <div style={{ fontSize:11, color:T.sub, marginBottom:8, fontWeight:700, letterSpacing:1 }}>NOM DU CLIENT (optionnel)</div>
-              <input type="text" placeholder="Ex : Kofi Mensah" value={form.client||""} onChange={e=>setForm(f=>({...f,client:e.target.value}))}
-                style={{ width:"100%", background:T.input, border:`2px solid ${T.border}`, borderRadius:12, padding:"12px 14px", color:T.text, fontSize:14, outline:"none", boxSizing:"border-box" }} />
             </div>
 
             <div style={{ marginBottom:22 }}>
