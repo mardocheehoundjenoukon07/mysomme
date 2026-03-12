@@ -1007,7 +1007,10 @@ export default function MonPoint() {
   function shareReport() {
     const dateLabel = new Date(selectedDate).toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
     const forfaitsVendus = txs.filter(t=>t.type==="forfait");
-    const forfaitLine = forfaitsVendus.length > 0 ? `\n📦 Forfaits vendus : ${forfaitsVendus.length} (${fF(sum(t=>t.type==="forfait"))})` : "";
+    const internetCount = txs.filter(t=>t.type==="forfait"&&t.forfait==="internet").length;
+    const appelCount    = txs.filter(t=>t.type==="forfait"&&t.forfait==="appel").length;
+    const creditCount   = txs.filter(t=>t.type==="forfait"&&t.forfait==="credit").length;
+    const forfaitLine   = forfaitsVendus.length > 0 ? `\n📦 Forfaits : ${forfaitsVendus.length} | 🌐 Internet: ${internetCount} | 📞 Appel: ${appelCount} | 💳 Crédit: ${creditCount}\n💵 Total forfaits : ${fF(sum(t=>t.type==="forfait"))}` : "";
     const floatLines = OPERATORS.map(op => {
       const actuel = calcFloatActuel(op);
       if (actuel === null) return null;
@@ -1317,25 +1320,14 @@ export default function MonPoint() {
 
             {/* ══ RÉSUMÉ DU JOUR ══ */}
             <div style={{ background:`linear-gradient(135deg,${T.hero},${T.card})`, borderRadius:18, padding:desktop?22:16, marginBottom:14, border:`1px solid ${T.border2}` }}>
-              <div style={{ display:"flex", gap:desktop?28:18, flexWrap:"wrap" }}>
-                <div><div style={{ fontSize:11, color:T.sub }}>Opérations</div><div style={{ fontSize:22, fontWeight:800 }}>{txs.length}</div></div>
+              <div style={{ display:"flex", gap:desktop?28:14, flexWrap:"wrap" }}>
+                <div><div style={{ fontSize:11, color:T.sub }}>Opérations</div><div style={{ fontSize:22, fontWeight:800 }}>{txs.filter(t=>t.type!=="forfait").length}</div></div>
                 <div><div style={{ fontSize:11, color:T.sub }}>Commission</div><div style={{ fontSize:22, fontWeight:800, color:"#FFB800" }}>{fF(totalCom)}</div></div>
-                <div><div style={{ fontSize:11, color:T.sub }}>Agent</div><div style={{ fontSize:18, fontWeight:700, color:OP_COLORS[agent.reseau]||"#00C896" }}>{agent.nom.split(" ")[0]}</div></div>
+                <div><div style={{ fontSize:11, color:T.sub }}>📦 Forfaits</div><div style={{ fontSize:22, fontWeight:800, color:"#9B5FDE" }}>{txs.filter(t=>t.type==="forfait").length}</div></div>
+                <div><div style={{ fontSize:11, color:T.sub }}>🌐 Internet</div><div style={{ fontSize:20, fontWeight:800, color:"#00A5FF" }}>{txs.filter(t=>t.type==="forfait"&&t.forfait==="internet").length}</div></div>
+                <div><div style={{ fontSize:11, color:T.sub }}>📞 Appel</div><div style={{ fontSize:20, fontWeight:800, color:"#00C896" }}>{txs.filter(t=>t.type==="forfait"&&t.forfait==="appel").length}</div></div>
+                <div><div style={{ fontSize:11, color:T.sub }}>💳 Crédit</div><div style={{ fontSize:20, fontWeight:800, color:"#FFB800" }}>{txs.filter(t=>t.type==="forfait"&&t.forfait==="credit").length}</div></div>
               </div>
-            </div>
-
-            <div style={{ display:"grid", gridTemplateColumns:desktop?"repeat(3,1fr)":"1fr 1fr", gap:10, marginBottom:14 }}>
-              {[
-                { label:"Dépôts",   value:sum(t=>t.type==="depot"),   icon:"⬇️", color:"#00C896" },
-                { label:"Retraits", value:sum(t=>t.type==="retrait"), icon:"⬆️", color:"#4F8EF7" },
-                { label:"Forfaits", value:sum(t=>t.type==="forfait"), icon:"📦", color:"#9B5FDE" },
-              ].map((s,i)=>(
-                <div key={i} style={{ background:T.card, borderRadius:16, padding:desktop?20:16, border:`1px solid ${s.color}22` }}>
-                  <div style={{ fontSize:22 }}>{s.icon}</div>
-                  <div style={{ fontSize:desktop?20:18, fontWeight:900, color:s.color, marginTop:8 }}>{fF(s.value)}</div>
-                  <div style={{ fontSize:11, color:T.faint, marginTop:4 }}>{s.label}</div>
-                </div>
-              ))}
             </div>
 
             {/* ══ VENTE FORFAITS — 3 TAPS ══ */}
