@@ -697,6 +697,7 @@ export default function MonPoint() {
   const [loading,       setLoading]       = useState(true);
   const [saving,        setSaving]        = useState(false);
   const [flash,         setFlash]         = useState(null);
+  const [showReport,    setShowReport]    = useState(false);
   const [confirm,       setConfirm]       = useState(null);
   const [confirmLogout, setConfirmLogout] = useState(false);
   const [selectedDate,  setSelectedDate]  = useState(todayStr());
@@ -1004,21 +1005,7 @@ export default function MonPoint() {
     return "🟢 OK";
   }
 
-  function shareReport() {
-    const dateLabel = new Date(selectedDate).toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
-    const forfaitsVendus = txs.filter(t=>t.type==="forfait");
-    const internetCount = txs.filter(t=>t.type==="forfait"&&t.forfait==="internet").length;
-    const appelCount    = txs.filter(t=>t.type==="forfait"&&t.forfait==="appel").length;
-    const creditCount   = txs.filter(t=>t.type==="forfait"&&t.forfait==="simple").length;
-    const forfaitLine   = forfaitsVendus.length > 0 ? `\n📦 Forfaits : ${forfaitsVendus.length} | 🌐 Internet: ${internetCount} | 📞 Appel: ${appelCount} | 📱 Simple: ${creditCount}\n💵 Total forfaits : ${fF(sum(t=>t.type==="forfait"))}` : "";
-    const floatLines = OPERATORS.map(op => {
-      const actuel = calcFloatActuel(op);
-      if (actuel === null) return null;
-      return `💼 Solde ${op} : ${fF(actuel)}`;
-    }).filter(Boolean).join("\n");
-    const text = `📊 *Point du jour — Mon Point*\n📅 ${dateLabel}\n👤 Agent : ${agent.nom}\n\n⬇️ Dépôts : ${fF(sum(t=>t.type==="depot"))}\n⬆️ Retraits : ${fF(sum(t=>t.type==="retrait"))}${forfaitLine}\n\n💰 *CA Total : ${fF(totalCA)}*\n✅ *Commission : ${fF(totalCom)}*${floatLines?"\n\n"+floatLines:""}\n\n_Généré par Mon Point_`;
-    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
-  }
+  function shareReport() { setShowReport(true); }
 
   function getDaysInMonth(y,m) { return new Date(y,m,0).getDate(); }
   function getFirstDay(y,m)    { return new Date(y,m-1,1).getDay(); }
@@ -1364,17 +1351,17 @@ export default function MonPoint() {
                   MTN: {
                     internet:[100,300,500,1000,2000,3500,6000,15100,20000,25000,30000,50000,75000,100000],
                     appel:   [100,150,200,300,500,1000,1500,2500,5000],
-                    credit:  [100,200,500,1000,2000,5000,10000],
+                    simple:  [100,200,500,1000,2000,5000,10000],
                   },
                   MOOV: {
                     internet:[200,500,1000,2000,4500,8000,15000,15500,20000,50000],
                     appel:   [100,200,500,1000,2500,5000],
-                    credit:  [100,200,500,1000,2000,5000],
+                    simple:  [100,200,500,1000,2000,5000],
                   },
                   Celtiis: {
                     internet:[1000,3000,5000,10000,20000],
                     appel:   [100,150,200,500,1500,3000,5000,10000],
-                    credit:  [200,500,1000,2000,5000],
+                    simple:  [200,500,1000,2000,5000],
                   },
                 };
                 const prix = GRILLES[form.forfaitOp]?.[form.forfaitType] || [];
@@ -1398,7 +1385,7 @@ export default function MonPoint() {
                 <button onClick={async ()=>{
                   setSaving(true);
                   const localId = Date.now();
-                  const typeLabels = {internet:"🌐 Internet",appel:"📞 Appel",credit:"📱 Simple"};
+                  const typeLabels = {internet:"🌐 Internet",appel:"📞 Appel",simple:"📱 Simple"};
                   const tx = {
                     type:"forfait", operateur:form.forfaitOp,
                     montant:Number(form.forfaitPrix), commission:0,
@@ -1803,6 +1790,152 @@ export default function MonPoint() {
       )}
 
       {/* ══ CONFIRM SUPPRESSION ════════════════════════════════════════ */}
+      
+      {/* ══ MODAL RAPPORT ══ */}
+      {showReport && (()=>{
+        const dateLabel = new Date(selectedDate).toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
+        const txArgent  = txs.filter(t=>t.type!=="forfait");
+        const txUnites  = txs.filter(t=>t.type==="forfait");
+        const internetC = txUnites.filter(t=>t.forfait==="internet").length;
+        const appelC    = txUnites.filter(t=>t.forfait==="appel").length;
+        const simpleC   = txUnites.filter(t=>t.forfait==="simple").length;
+        const floatLines = OPERATORS.map(op=>{
+          const actuel = calcFloatActuel(op);
+          if(actuel===null) return null;
+          return {op, actuel};
+        }).filter(Boolean);
+        return (
+          <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.85)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }} onClick={()=>setShowReport(false)}>
+            <div style={{ background:"#fff", borderRadius:20, padding:24, maxWidth:400, width:"100%", maxHeight:"90vh", overflowY:"auto", color:"#111" }} onClick={e=>e.stopPropagation()}>
+              {/* Header */}
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
+                <div>
+                  <div style={{ fontWeight:900, fontSize:16, color:"#111" }}>📊 Point du jour</div>
+                  <div style={{ fontSize:12, color:"#666", marginTop:2 }}>{dateLabel}</div>
+                </div>
+                <button onClick={()=>setShowReport(false)} style={{ background:"#f0f0f0", border:"none", borderRadius:20, width:32, height:32, cursor:"pointer", fontSize:16 }}>✕</button>
+              </div>
+
+              {/* Agent */}
+              <div style={{ background:"#f8f8f8", borderRadius:12, padding:"10px 14px", marginBottom:16, fontSize:13 }}>
+                👤 <strong>{agent.nom}</strong> — {agent.reseau} — {agent.telephone}
+              </div>
+
+              {/* Séparateur ARGENT */}
+              <div style={{ fontWeight:900, fontSize:13, color:"#00C896", borderBottom:"2px solid #00C89630", paddingBottom:6, marginBottom:12 }}>💵 TRANSACTIONS ARGENT</div>
+              {OPERATORS.map(op=>{
+                const deps = txArgent.filter(t=>t.type==="depot"&&t.operateur===op);
+                const rets = txArgent.filter(t=>t.type==="retrait"&&t.operateur===op);
+                if(deps.length===0&&rets.length===0) return null;
+                return (
+                  <div key={op} style={{ marginBottom:12, background:"#f8f8f8", borderRadius:10, padding:"10px 14px" }}>
+                    <div style={{ fontWeight:800, fontSize:13, marginBottom:6, color:"#333" }}>{op}</div>
+                    {deps.length>0&&<div style={{ fontSize:13, marginBottom:3 }}>⬇️ Dépôts : <strong>{deps.length} op — {fF(deps.reduce((s,t)=>s+Number(t.montant),0))}</strong> <span style={{color:"#888",fontSize:11}}>comm. {fF(deps.reduce((s,t)=>s+Number(t.commission),0))}</span></div>}
+                    {rets.length>0&&<div style={{ fontSize:13 }}>⬆️ Retraits : <strong>{rets.length} op — {fF(rets.reduce((s,t)=>s+Number(t.montant),0))}</strong> <span style={{color:"#888",fontSize:11}}>comm. {fF(rets.reduce((s,t)=>s+Number(t.commission),0))}</span></div>}
+                  </div>
+                );
+              })}
+              <div style={{ display:"flex", gap:10, marginBottom:16 }}>
+                <div style={{ flex:1, background:"#00C89615", borderRadius:10, padding:"10px 14px", textAlign:"center" }}>
+                  <div style={{ fontSize:11, color:"#666" }}>CA Total</div>
+                  <div style={{ fontWeight:900, fontSize:18, color:"#00C896" }}>{fF(totalCA)}</div>
+                </div>
+                <div style={{ flex:1, background:"#FFB80015", borderRadius:10, padding:"10px 14px", textAlign:"center" }}>
+                  <div style={{ fontSize:11, color:"#666" }}>Commission</div>
+                  <div style={{ fontWeight:900, fontSize:18, color:"#FFB800" }}>{fF(totalCom)}</div>
+                </div>
+              </div>
+
+              {/* Séparateur UNITÉS */}
+              {txUnites.length>0&&<>
+              <div style={{ fontWeight:900, fontSize:13, color:"#9B5FDE", borderBottom:"2px solid #9B5FDE30", paddingBottom:6, marginBottom:12 }}>📦 VENTE D'UNITÉS</div>
+              {OPERATORS.map(op=>{
+                const us = txUnites.filter(t=>t.operateur===op);
+                if(us.length===0) return null;
+                const intC=us.filter(t=>t.forfait==="internet").length;
+                const apC=us.filter(t=>t.forfait==="appel").length;
+                const siC=us.filter(t=>t.forfait==="simple").length;
+                return (
+                  <div key={op} style={{ marginBottom:10, background:"#f8f8f8", borderRadius:10, padding:"10px 14px" }}>
+                    <div style={{ fontWeight:800, fontSize:13, marginBottom:4, color:"#333" }}>{op}</div>
+                    {intC>0&&<div style={{ fontSize:13 }}>🌐 Internet : <strong>{intC}</strong></div>}
+                    {apC>0&&<div style={{ fontSize:13 }}>📞 Appel : <strong>{apC}</strong></div>}
+                    {siC>0&&<div style={{ fontSize:13 }}>📱 Simple : <strong>{siC}</strong></div>}
+                    <div style={{ fontSize:12, color:"#888", marginTop:3 }}>Total : {fF(us.reduce((s,t)=>s+Number(t.montant),0))}</div>
+                  </div>
+                );
+              })}
+              </>}
+
+              {/* Soldes float */}
+              {floatLines.length>0&&<>
+              <div style={{ fontWeight:900, fontSize:13, color:"#4F8EF7", borderBottom:"2px solid #4F8EF730", paddingBottom:6, marginBottom:12, marginTop:4 }}>💼 SOLDES</div>
+              {floatLines.map(({op,actuel})=>(
+                <div key={op} style={{ display:"flex", justifyContent:"space-between", padding:"6px 0", fontSize:13, borderBottom:`1px solid #eee` }}>
+                  <span>{op}</span><strong>{fF(actuel)}</strong>
+                </div>
+              ))}
+              </>}
+
+              {/* Footer */}
+              <div style={{ marginTop:16, fontSize:11, color:"#aaa", textAlign:"center" }}>Généré par Mon Point · {new Date().toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}</div>
+
+              {/* Bouton partager */}
+              <button onClick={()=>{
+                const dateLabel2 = new Date(selectedDate).toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"});
+                let txt = `📊 *POINT DU JOUR — ${dateLabel2.toUpperCase()}*
+👤 ${agent.nom} | ${agent.reseau}
+
+`;
+                txt += `💵 *TRANSACTIONS ARGENT*
+`;
+                OPERATORS.forEach(op=>{
+                  const deps=txArgent.filter(t=>t.type==="depot"&&t.operateur===op);
+                  const rets=txArgent.filter(t=>t.type==="retrait"&&t.operateur===op);
+                  if(deps.length||rets.length){
+                    txt+=`
+▪️ ${op}
+`;
+                    if(deps.length) txt+=`  ⬇️ Dépôts: ${deps.length} op · ${fF(deps.reduce((s,t)=>s+Number(t.montant),0))} · comm. ${fF(deps.reduce((s,t)=>s+Number(t.commission),0))}
+`;
+                    if(rets.length) txt+=`  ⬆️ Retraits: ${rets.length} op · ${fF(rets.reduce((s,t)=>s+Number(t.montant),0))} · comm. ${fF(rets.reduce((s,t)=>s+Number(t.commission),0))}
+`;
+                  }
+                });
+                txt+=`
+💰 CA Total: ${fF(totalCA)} | ✅ Commission: ${fF(totalCom)}
+`;
+                if(txUnites.length){
+                  txt+=`
+📦 *VENTE D'UNITÉS*
+`;
+                  OPERATORS.forEach(op=>{
+                    const us=txUnites.filter(t=>t.operateur===op);
+                    if(us.length){
+                      const intC=us.filter(t=>t.forfait==="internet").length;
+                      const apC=us.filter(t=>t.forfait==="appel").length;
+                      const siC=us.filter(t=>t.forfait==="simple").length;
+                      txt+=`
+▪️ ${op}: `;
+                      if(intC) txt+=`🌐${intC} `;
+                      if(apC)  txt+=`📞${apC} `;
+                      if(siC)  txt+=`📱${siC} `;
+                      txt+=`· ${fF(us.reduce((s,t)=>s+Number(t.montant),0))}
+`;
+                    }
+                  });
+                }
+                txt+=`
+_Mon Point_`;
+                window.open(`https://wa.me/?text=${encodeURIComponent(txt)}`,"_blank");
+              }} style={{ width:"100%", marginTop:12, padding:14, borderRadius:14, background:"linear-gradient(135deg,#25D366,#128C7E)", border:"none", color:"#fff", fontWeight:900, fontSize:14, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+                <span style={{fontSize:18}}>📤</span> Partager sur WhatsApp
+              </button>
+            </div>
+          </div>
+        );
+      })()}
+
       {confirm && (
         <div style={{ position:"fixed", inset:0, background:"#000C", display:"flex", alignItems:"center", justifyContent:"center", zIndex:400, padding:24 }}>
           <div style={{ background:T.card, borderRadius:20, padding:26, width:"100%", maxWidth:320, border:`1px solid ${T.border2}` }}>
