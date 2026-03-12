@@ -111,160 +111,17 @@ async function flushPending(userId) {
 }
 
 
-// ─── PARRAINAGE ───────────────────────────────────────────────────────────────
-function getReferralLink(telephone) {
-  return `https://monpoint.site?ref=${telephone}`;
-}
-function getRefFromURL() {
-  try { return new URLSearchParams(window.location.search).get("ref") || null; }
-  catch { return null; }
-}
-async function crediterParrain(telephoneParrain) {
-  // Récupérer le parrain
-  const parrain = await fetchAgent(telephoneParrain);
-  if (!parrain) return;
-  // Si parrain déjà étendu à 30j → ne pas re-créditer
-  if (parrain.trial_extended) return;
-  // Ajouter 16 jours et marquer comme étendu
-  await updateAgent(telephoneParrain, {
-    trial_days: (parrain.trial_days || 14) + 16,
-    trial_extended: true,
-    referral_count: (parrain.referral_count || 0) + 1
-  });
-}
-
-// ─── TRIAL & ABONNEMENT ───────────────────────────────────────────────────────
-function getTrialInfo(agent) {
-  if (!agent) return { status:"expired", daysLeft:0 };
-  const now = new Date();
-
-  // Abonnement actif payant ?
-  if (agent.subscription_status === "active" && agent.subscription_expires_at) {
-    const exp = new Date(agent.subscription_expires_at);
-    if (exp > now) {
-      return { status:"subscribed", daysLeft: Math.ceil((exp-now)/(1000*60*60*24)) };
-    }
-  }
-
-  // Période d'essai — limiter trial_days à 30 max pour éviter la triche
-  const start     = new Date(agent.trial_start || agent.created_at);
-  const rawDays   = Number(agent.trial_days) || 14;
-  const totalDays = Math.min(rawDays, 30); // MAX 30 jours — impossible de tricher
-  const elapsed   = Math.floor((now - start) / (1000*60*60*24));
-  const daysLeft  = totalDays - elapsed;
-
-  if (daysLeft > 0) return { status:"trial", daysLeft };
-  return { status:"expired", daysLeft:0 };
-}
-
-async function activerAbonnement(telephone, fedapayId) {
-  const exp = new Date();
-  exp.setDate(exp.getDate() + 30);
-  await updateAgent(telephone, {
-    subscription_status: "active",
-    subscription_expires_at: exp.toISOString()
-  });
-  // Sauvegarder dans la table abonnements
-  try {
-    await fetch(`${SUPA_URL}/rest/v1/abonnements`, {
-      method:"POST", headers:HA(telephone),
-      body:JSON.stringify({ agent_telephone:telephone, montant:1999, fedapay_id:fedapayId, statut:"paid", expire_at:exp.toISOString() })
-    });
-  } catch {}
-}
-
-// ─── GRILLE TARIFAIRE RETRAIT ─────────────────────────────────────────────────
-const GRILLE_RETRAIT = [
-  { min:100,     max:500,     MTN:50,   MOOV:50,   Celtiis:25   },
-  { min:501,     max:5000,    MTN:125,  MOOV:125,  Celtiis:75   },
-  { min:5001,    max:10000,   MTN:225,  MOOV:225,  Celtiis:150  },
-  { min:10001,   max:20000,   MTN:375,  MOOV:375,  Celtiis:250  },
-  { min:20001,   max:50000,   MTN:700,  MOOV:700,  Celtiis:500  },
-  { min:50001,   max:75000,   MTN:1000, MOOV:1000, Celtiis:750  },
-  { min:75001,   max:100000,  MTN:1000, MOOV:1000, Celtiis:1000 },
-  { min:100001,  max:200000,  MTN:2000, MOOV:2000, Celtiis:2000 },
-  { min:200001,  max:300000,  MTN:3000, MOOV:3000, Celtiis:3000 },
-  { min:300001,  max:500000,  MTN:3500, MOOV:3500, Celtiis:4000 },
-  { min:500001,  max:750000,  MTN:5000, MOOV:5000, Celtiis:5000 },
-  { min:750001,  max:1000000, MTN:6000, MOOV:6000, Celtiis:5000 },
-  { min:1000001, max:1500000, MTN:8000, MOOV:8000, Celtiis:5000 },
-  { min:1500001, max:2000000, MTN:9900, MOOV:9900, Celtiis:5000 },
-];
-function calcComRetrait(op, montant) {
-  const mt = Number(montant)||0;
-  const t  = GRILLE_RETRAIT.find(t => mt>=t.min && mt<=t.max);
-  return t ? (t[op]||0) : 0;
-}
-function calcCom(type, op, montant) { return type==="retrait" ? calcComRetrait(op,montant) : 0; }
-function getTranche(montant) { const mt=Number(montant)||0; return GRILLE_RETRAIT.find(t=>mt>=t.min&&mt<=t.max)||null; }
-
-// ─── CONSTANTES ───────────────────────────────────────────────────────────────
-const OPERATORS  = ["MTN","MOOV","Celtiis"];
-const OP_COLORS  = { MTN:"#FFB800", MOOV:"#0066CC", Celtiis:"#E63946" };
-const OP_BG_D    = { MTN:"#FFB80018", MOOV:"#0066CC18", Celtiis:"#E6394618" };
-const OP_BG_L    = { MTN:"#FFB80028", MOOV:"#0066CC20", Celtiis:"#E6394620" };
-const TYPE_COLOR = { depot:"#00C896", retrait:"#4F8EF7" };
-const TYPE_ICON  = { depot:"⬇️", retrait:"⬆️" };
-const TYPE_LABEL = { depot:"Dépôt", retrait:"Retrait" };
-const JOURS      = ["Dim","Lun","Mar","Mer","Jeu","Ven","Sam"];
-const MOIS_FR    = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
-const fF = n => Number(n||0).toLocaleString("fr-FR") + " F";
-
-function getSalutation(nom) {
-  const h = new Date().getHours();
-  const g = h>=5&&h<12?"Bonjour":h>=12&&h<18?"Bon après-midi":"Bonsoir";
-  return `${g}, ${(nom||"").split(" ")[0]} 👋`;
-}
-
-// ─── THÈMES ───────────────────────────────────────────────────────────────────
-const DARK  = { bg:"#080A11", card:"#0F1118", border:"#1C1F2E", border2:"#22263A", text:"#E8EAF0", sub:"#4A5060", faint:"#2E3140", hero:"#151826", input:"#080A11", nav:"#0F1118", sidebar:"#0C0E17" };
-const LIGHT = { bg:"#F0F2F8", card:"#FFFFFF",  border:"#DDE1EE", border2:"#CDD2E4", text:"#1A1D2E", sub:"#6B7080", faint:"#C0C5D5", hero:"#E4E8F5", input:"#F8F9FC", nav:"#FFFFFF", sidebar:"#EAECF5" };
-
-// ─── HOOK RESPONSIVE ─────────────────────────────────────────────────────────
-function useWindowWidth() {
-  const [w, setW] = useState(typeof window!=="undefined"?window.innerWidth:375);
-  useEffect(() => {
-    const style = document.createElement("style");
-    style.id = "ms-reset";
-    style.textContent = `
-      *,*::before,*::after{box-sizing:border-box!important;margin:0;padding:0;}
-      html,body{margin:0!important;padding:0!important;width:100%!important;max-width:100%!important;overflow-x:hidden!important;background:#080A11!important;}
-      #root,[id^="react"],body>div{margin:0!important;padding:0!important;width:100%!important;max-width:100%!important;}
-      button{-webkit-tap-highlight-color:transparent;outline:none;}
-      input{-webkit-appearance:none;outline:none;}
-    `;
-    if (!document.getElementById("ms-reset")) document.head.appendChild(style);
-    const h = () => setW(window.innerWidth);
-    window.addEventListener("resize", h);
-    return () => window.removeEventListener("resize", h);
-  }, []);
-  return w;
-}
-
-// ─── COMPOSANT PIN ────────────────────────────────────────────────────────────
-function PinPad({ title, subtitle, onSubmit, T, error, blocked }) {
-  const [pin, setPin] = useState("");
-  const add = d => {
-    if (blocked) return;
+function PinPad({ title, subtitle, onSubmit, T, error }) {
+  const [pin, setPin] = React.useState("");
+  function add(d) {
     if (pin.length >= 4) return;
-    const p = pin + d; setPin(p);
-    if (p.length === 4) setTimeout(() => { onSubmit(p); setPin(""); }, 140);
-  };
+    const next = pin + d;
+    setPin(next);
+    if (next.length === 4) { setTimeout(() => { onSubmit(next); setPin(""); }, 150); }
+  }
   return (
     <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", minHeight:"100vh", padding:24, background:T.bg }}>
-      <svg width="54" height="54" viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg" style={{marginBottom:22,filter:"drop-shadow(0 6px 24px #00C89640)"}}>
-  <rect x="4" y="4" width="44" height="44" rx="14" fill="url(#msgrad_pin)"/>
-  <path d="M12 36 L12 18 L26 29 L40 18 L40 36" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-  <circle cx="26" cy="40" r="3" fill="white" opacity="0.95"/>
-  <defs>
-    <linearGradient id="msgrad_pin" x1="0" y1="0" x2="52" y2="52" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#00C896"/>
-      <stop offset="50%" stop-color="#00A5FF"/>
-      <stop offset="100%" stop-color="#7B2FBE"/>
-    </linearGradient>
-  </defs>
-</svg>
-      <div style={{ fontWeight:900, fontSize:24, marginBottom:6, textAlign:"center", color:T.text }}>{title}</div>
+      <div style={{ fontWeight:900, fontSize:22, marginBottom:8, color:T.text }}>{title}</div>
       <div style={{ fontSize:13, color:T.sub, marginBottom:36, textAlign:"center" }}>{subtitle}</div>
       <div style={{ display:"flex", gap:18, marginBottom:36 }}>
         {[0,1,2,3].map(i=>(
@@ -321,75 +178,6 @@ function Inscription({ onDone, T }) {
     const agent = {
       nom: form.nom.trim(), telephone: form.telephone.trim(),
       reseau: form.reseau, pin: pinHash,
-      referral_code: form.telephone.trim(),
-      referred_by: refCode || null,
-      referral_count: 0,
-      trial_days: 14,
-      trial_extended: false,
-      subscription_status: "trial",
-      created_at: nowISO(), trial_start: nowISO()
-    };
-    const saved = await saveAgent(agent);
-    if (refCode) await crediterParrain(refCode);
-    const fresh = await fetchAgent(agent.telephone);
-    const trusted = fresh ? { ...fresh, pin: pinHash } : { ...(saved||agent), pin: pinHash };
-    lsSet("ms_agent", trusted);
-    onDone(trusted);
-  }
-
-  // ── CONNEXION ──
-  async function handleLogin() {
-    if (!form.telephone) { setError("Entre ton numéro"); return; }
-    setLoading(true); setError("");
-    const agent = await fetchAgent(form.telephone);
-    setLoading(false);
-    if (!agent) { setError("Numéro introuvable. Crée un compte."); return; }
-    lsSet("ms_agent", agent);
-    setStep(10);
-  }
-  async function handlePinLogin(p) {
-    if (loginBlocked) { setError("🔒 Trop de tentatives. Réessaie dans 5 minutes."); return; }
-    const agent = lsGet("ms_agent");
-    const pinHash = await hashPin(p);
-    if (pinHash === agent?.pin) {
-      onDone(agent);
-      setLoginAttempts(0);
-    } else {
-      const newAttempts = loginAttempts + 1;
-      setLoginAttempts(newAttempts);
-      if (newAttempts >= 3) {
-        setLoginBlocked(true);
-        setError("🔒 3 tentatives échouées — bloqué 5 minutes.");
-        setTimeout(() => { setLoginBlocked(false); setLoginAttempts(0); setError(""); }, 5*60*1000);
-      } else {
-        setError(`Code PIN incorrect. ${3-newAttempts} tentative${3-newAttempts>1?"s":""} restante${3-newAttempts>1?"s":""}.`);
-      }
-    }
-  }
-
-  // ── Écrans PIN ──
-  if (step===2) return <PinPad title="Crée ton PIN 🔐" subtitle="4 chiffres pour sécuriser ton compte" onSubmit={handlePinCreate} T={T} />;
-  if (step===3) return <PinPad title="Confirme ton PIN" subtitle="Retape les mêmes 4 chiffres" onSubmit={handlePinConfirm} T={T} error={error} />;
-  if (step===10) return <PinPad title="Bon retour 👋" subtitle="Entre ton code PIN" onSubmit={handlePinLogin} T={T} error={error} />;
-
-  return (
-    <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", minHeight:"100vh", padding:w>=640?40:24, background:T.bg }}>
-      <div style={{ width:"100%", maxWidth:400 }}>
-        {/* Logo */}
-        <div style={{ display:"flex", flexDirection:"column", alignItems:"center", marginBottom:30 }}>
-          <svg width="58" height="58" viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg" style={{marginBottom:14,filter:"drop-shadow(0 6px 26px #00C89640)"}}>
-  <rect x="4" y="4" width="44" height="44" rx="14" fill="url(#msgrad_ins)"/>
-  <path d="M12 36 L12 18 L26 29 L40 18 L40 36" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-  <circle cx="26" cy="40" r="3" fill="white" opacity="0.95"/>
-  <defs>
-    <linearGradient id="msgrad_ins" x1="0" y1="0" x2="52" y2="52" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#00C896"/>
-      <stop offset="50%" stop-color="#00A5FF"/>
-      <stop offset="100%" stop-color="#7B2FBE"/>
-    </linearGradient>
-  </defs>
-</svg>
-          <div style={{ fontWeight:900, fontSize:28, marginBottom:4, color:T.text }}>Mon Point</div>
           <div style={{ fontSize:13, color:T.sub, textAlign:"center" }}>
             {mode==="register" ? "Ton cahier MoMo numérique 🇧🇯" : "Reconnecte-toi à ton espace"}
           </div>
@@ -430,13 +218,9 @@ function Inscription({ onDone, T }) {
             </div>
           </div>
           <div style={{ background:"#00C89612", border:"1px solid #00C89630", borderRadius:12, padding:"11px 16px", marginBottom:20, fontSize:12, color:"#00C896", textAlign:"center" }}>
-            🎁 <strong>14 jours gratuits</strong> — aucune carte bancaire requise
+            🎁 <strong>2 mois d'essai gratuit</strong> — aucune carte bancaire requise
           </div>
-          {getRefFromURL() && (
-            <div style={{ background:"#FFB80012", border:"1px solid #FFB80030", borderRadius:12, padding:"11px 16px", marginBottom:16, fontSize:12, color:"#FFB800", textAlign:"center" }}>
-              🎉 Tu as été invité par un ami — profite de ton essai gratuit !
-            </div>
-          )}
+
           <button onClick={handleRegisterStep1} disabled={loading}
             style={{ width:"100%", padding:17, borderRadius:14, background:"linear-gradient(135deg,#00C896,#00A5FF)", border:"none", color:"#fff", fontWeight:900, fontSize:16, cursor:loading?"not-allowed":"pointer", opacity:loading?0.7:1 }}>
             {loading?"⏳ Vérification...":"Créer mon compte →"}
@@ -505,13 +289,13 @@ function PaymentWall({ agent, T, onPaid, onBack }) {
 
         <svg width="64" height="64" viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg" style={{margin:"0 auto 20px",display:"block",filter:"drop-shadow(0 8px 30px #00C89640)"}}>
   <rect x="4" y="4" width="44" height="44" rx="14" fill="url(#msgrad_pay)"/>
-  <path d="M12 36 L12 18 L26 29 L40 18 L40 36" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <path d="M12 36 L12 18 L26 29 L40 18 L40 36" stroke="white" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
   <circle cx="26" cy="40" r="3" fill="white" opacity="0.95"/>
   <defs>
     <linearGradient id="msgrad_pay" x1="0" y1="0" x2="52" y2="52" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#00C896"/>
-      <stop offset="50%" stop-color="#00A5FF"/>
-      <stop offset="100%" stop-color="#7B2FBE"/>
+      <stop offset="0%" stopColor="#00C896"/>
+      <stop offset="50%" stopColor="#00A5FF"/>
+      <stop offset="100%" stopColor="#7B2FBE"/>
     </linearGradient>
   </defs>
 </svg>
@@ -562,12 +346,8 @@ function PaymentWall({ agent, T, onPaid, onBack }) {
 
         <div style={{ marginTop:20, background:"#FFB80010", border:"1px solid #FFB80030", borderRadius:14, padding:"14px 16px" }}>
           <div style={{ fontSize:12, color:"#FFB800", fontWeight:700, marginBottom:6 }}>💡 Pas encore prêt à payer ?</div>
-          <div style={{ fontSize:11, color:T.sub, marginBottom:10 }}>Invite 1 ami avec ton lien → gagne <strong style={{color:"#FFB800"}}>+16 jours gratuits</strong> avant de payer.</div>
           <button onClick={()=>{ navigator.clipboard?.writeText(`https://monpoint.site?ref=${agent.telephone}`); alert("Lien copié !"); }}
             style={{ width:"100%", padding:"9px 0", borderRadius:10, background:"#FFB80020", border:"1px solid #FFB80050", color:"#FFB800", fontWeight:700, fontSize:12, cursor:"pointer" }}>
-            📋 Copier mon lien de parrainage
-          </button>
-        </div>
 
       </div>
     </div>
@@ -723,13 +503,13 @@ export default function MonPoint() {
     const faviconSVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 52 52">
       <defs>
         <linearGradient id="fg" x1="0" y1="0" x2="52" y2="52" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stop-color="#00C896"/>
-          <stop offset="50%" stop-color="#00A5FF"/>
-          <stop offset="100%" stop-color="#7B2FBE"/>
+          <stop offset="0%" stopColor="#00C896"/>
+          <stop offset="50%" stopColor="#00A5FF"/>
+          <stop offset="100%" stopColor="#7B2FBE"/>
         </linearGradient>
       </defs>
       <rect x="2" y="2" width="48" height="48" rx="14" fill="url(#fg)"/>
-      <path d="M11 37 L11 17 L26 29 L41 17 L41 37" stroke="white" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      <path d="M11 37 L11 17 L26 29 L41 17 L41 37" stroke="white" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
       <circle cx="26" cy="41" r="3.5" fill="white" opacity="0.95"/>
     </svg>`;
 
@@ -1003,12 +783,7 @@ export default function MonPoint() {
       )}
 
 
-      {/* BADGE PENDING */}
-      {pendingCount > 0 && (
-        <div style={{ position:"fixed", bottom:mobile?80:88, left:12, background:"#FFB800", color:"#000", borderRadius:20, padding:"5px 11px", fontWeight:800, fontSize:11, zIndex:999, boxShadow:"0 2px 10px #FFB80060", pointerEvents:"none" }}>
-          ⚡ {pendingCount} en attente
-        </div>
-      )}
+
 
       {/* ══ SIDEBAR DESKTOP ═════════════════════════════════════════════ */}
       {desktop && (
@@ -1016,13 +791,13 @@ export default function MonPoint() {
           <div style={{ display:"flex", alignItems:"center", gap:12, padding:"22px 20px 20px", borderBottom:`1px solid ${T.border}` }}>
             <svg width="42" height="42" viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg" style={{flexShrink:0}}>
   <rect x="4" y="4" width="44" height="44" rx="14" fill="url(#msgrad_sb)"/>
-  <path d="M12 36 L12 18 L26 29 L40 18 L40 36" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <path d="M12 36 L12 18 L26 29 L40 18 L40 36" stroke="white" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
   <circle cx="26" cy="40" r="3" fill="white" opacity="0.95"/>
   <defs>
     <linearGradient id="msgrad_sb" x1="0" y1="0" x2="52" y2="52" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#00C896"/>
-      <stop offset="50%" stop-color="#00A5FF"/>
-      <stop offset="100%" stop-color="#7B2FBE"/>
+      <stop offset="0%" stopColor="#00C896"/>
+      <stop offset="50%" stopColor="#00A5FF"/>
+      <stop offset="100%" stopColor="#7B2FBE"/>
     </linearGradient>
   </defs>
 </svg>
@@ -1032,17 +807,10 @@ export default function MonPoint() {
             </div>
           </div>
 
-          {/* Bannière trial desktop */}
-          {trialInfo?.status === "trial" && (
-            <div style={{ margin:"12px 14px 0", background:trialBg, border:`1px solid ${trialColor}40`, borderRadius:11, padding:"10px 14px" }}>
-              <div style={{ fontSize:11, color:trialColor, fontWeight:800 }}>
-                ⏳ {trialInfo.daysLeft} jour{trialInfo.daysLeft>1?"s":""} d'essai restant{trialInfo.daysLeft>1?"s":""}
-              </div>
-              {!agent.trial_extended && (
-                <div style={{ fontSize:10, color:T.sub, marginTop:3 }}>Invite 1 ami → +16 jours gratuits</div>
-              )}
-            </div>
-          )}
+          {/* Bannière essai desktop — fixe */}
+          <div style={{ margin:"12px 14px 0", background:"#00C89612", border:"1px solid #00C89630", borderRadius:11, padding:"10px 14px", textAlign:"center" }}>
+            <div style={{ fontSize:11, color:"#00C896", fontWeight:800 }}>🎁 2 mois d'essai gratuit</div>
+          </div>
 
           <div style={{ margin:"12px 14px 6px", background:T.card, borderRadius:13, padding:"12px 14px", border:`1px solid ${T.border}` }}>
             <div style={{ fontSize:11, color:T.sub }}>Connecté en tant que</div>
@@ -1086,13 +854,13 @@ export default function MonPoint() {
           <div style={{ display:"flex", alignItems:"center", gap:10 }}>
             <svg width="38" height="38" viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg">
   <rect x="4" y="4" width="44" height="44" rx="14" fill="url(#msgrad2)"/>
-  <path d="M12 36 L12 18 L26 29 L40 18 L40 36" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <path d="M12 36 L12 18 L26 29 L40 18 L40 36" stroke="white" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
   <circle cx="26" cy="40" r="3" fill="white" opacity="0.95"/>
   <defs>
     <linearGradient id="msgrad2" x1="0" y1="0" x2="52" y2="52" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#00C896"/>
-      <stop offset="50%" stop-color="#00A5FF"/>
-      <stop offset="100%" stop-color="#7B2FBE"/>
+      <stop offset="0%" stopColor="#00C896"/>
+      <stop offset="50%" stopColor="#00A5FF"/>
+      <stop offset="100%" stopColor="#7B2FBE"/>
     </linearGradient>
   </defs>
 </svg>
@@ -1102,13 +870,8 @@ export default function MonPoint() {
             </div>
           </div>
           <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-            {/* Badge trial mobile */}
-            {trialInfo?.status === "trial" && (
-              <div style={{ background:trialBg, color:trialColor, borderRadius:8, padding:"3px 8px", fontSize:10, fontWeight:800, border:`1px solid ${trialColor}30` }}>
-                ⏳ {trialInfo.daysLeft}j
-              </div>
-            )}
-            {pendingCount > 0 && <div style={{ background:"#FFB80018", color:"#FFB800", borderRadius:8, padding:"3px 8px", fontSize:10, fontWeight:700 }}>⚡{pendingCount}</div>}
+
+
             <button onClick={()=>setShowCal(true)} style={{ background:dark?"#1C1F2E":"#E4E8F5", border:"none", borderRadius:10, padding:"8px 10px", cursor:"pointer", fontSize:18, lineHeight:1 }}>📅</button>
           </div>
         </header>
@@ -1144,22 +907,7 @@ export default function MonPoint() {
       <main style={{ marginLeft:mainLeft, paddingTop:desktop?62:0, minHeight:"100vh" }}>
         <div style={{ maxWidth:desktop?860:tablet?720:"100%", margin:"0 auto", padding:contentPad }}>
 
-          {/* Bannière trial mobile */}
-          {trialInfo?.status === "trial" && !desktop && (
-            <div style={{ background:trialBg, border:`1px solid ${trialColor}40`, borderRadius:12, padding:"10px 16px", marginBottom:14, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-              <div>
-                <div style={{ fontSize:13, fontWeight:800, color:trialColor }}>
-                  ⏳ {trialInfo.daysLeft} jour{trialInfo.daysLeft>1?"s":""} d'essai restant{trialInfo.daysLeft>1?"s":""}
-                </div>
-                {!agent.trial_extended && <div style={{ fontSize:11, color:T.sub, marginTop:2 }}>Invite 1 ami pour +16 jours gratuits</div>}
-              </div>
-              {trialInfo.daysLeft <= 5 && (
-                <button onClick={()=>setTab("profil")} style={{ background:trialColor, border:"none", borderRadius:9, padding:"7px 14px", color:"#fff", fontSize:11, fontWeight:800, cursor:"pointer", whiteSpace:"nowrap" }}>
-                  Voir offre
-                </button>
-              )}
-            </div>
-          )}
+          
 
           {/* Bandeau date passée */}
           {!isToday && (
@@ -1241,7 +989,7 @@ export default function MonPoint() {
             <div style={{ background:T.card, borderRadius:16, padding:desktop?22:18, marginBottom:14, border:`1px solid #7B2FBE30` }}>
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
                 <div>
-                  <div style={{ fontWeight:800, fontSize:14 }}>💼 Solde de départ</div>
+                  <div style={{ fontWeight:800, fontSize:14 }}>💼 Solde de départ du jour</div>
                   <div style={{ fontSize:11, color:T.sub, marginTop:2 }}>Solde électronique par réseau</div>
                 </div>
                 {isToday && (
@@ -1497,7 +1245,7 @@ _Mon Point_`;
           <div onClick={e=>e.stopPropagation()} style={{ background:T.card, borderRadius:desktop?"20px":"22px 22px 0 0", padding:"22px 20px 40px", width:desktop?420:"100%", border:`1px solid #7B2FBE40` }}>
             {!desktop && <div style={{ width:36, height:4, background:T.border2, borderRadius:2, margin:"0 auto 18px" }} />}
 
-            <div style={{ fontWeight:900, fontSize:18, marginBottom:4 }}>💼 Solde de départ</div>
+            <div style={{ fontWeight:900, fontSize:18, marginBottom:4 }}>💼 Solde de départ du jour</div>
             <div style={{ fontSize:12, color:T.sub, marginBottom:20 }}>
               Entre le solde électronique de départ ce matin pour chaque réseau.
             </div>
