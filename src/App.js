@@ -21,7 +21,8 @@ function lsDel(k)    { try { localStorage.removeItem(k); } catch {} }
 
 const txKey    = (date, uid) => `ms_txs_${uid}_${date}`;
 const pendKey  = uid          => `ms_pend_${uid}`;
-const floatKey = (date, uid) => `ms_float_${uid}_${date}`;
+const floatKey  = (date, uid) => `ms_float_${uid}_${date}`;
+const cashKey   = (date, uid) => `ms_cash_${uid}_${date}`;
 
 // ─── DATE LOCALE BÉNIN (UTC+1) ───────────────────────────────────────────────
 function todayStr() {
@@ -202,9 +203,9 @@ const OPERATORS  = ["MTN","MOOV","Celtiis"];
 const OP_COLORS  = { MTN:"#FFB800", MOOV:"#0066CC", Celtiis:"#E63946" };
 const OP_BG_D    = { MTN:"#FFB80018", MOOV:"#0066CC18", Celtiis:"#E6394618" };
 const OP_BG_L    = { MTN:"#FFB80028", MOOV:"#0066CC20", Celtiis:"#E6394620" };
-const TYPE_COLOR = { depot:"#00C896", retrait:"#4F8EF7", forfait:"#9B5FDE" };
-const TYPE_ICON  = { depot:"⬇️", retrait:"⬆️", forfait:"📦" };
-const TYPE_LABEL = { depot:"Dépôt", retrait:"Retrait", forfait:"Forfait" };
+const TYPE_COLOR = { depot:"#00C896", retrait:"#4F8EF7" };
+const TYPE_ICON  = { depot:"⬇️", retrait:"⬆️" };
+const TYPE_LABEL = { depot:"Dépôt", retrait:"Retrait" };
 const JOURS      = ["Dim","Lun","Mar","Mer","Jeu","Ven","Sam"];
 const MOIS_FR    = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
 const fF = n => Number(n||0).toLocaleString("fr-FR") + " F";
@@ -635,6 +636,9 @@ export default function MonPoint() {
   const [pendingCount,  setPendingCount]  = useState(0);
   const [showPaywall,   setShowPaywall]   = useState(false);
   const [floats,        setFloats]        = useState({ MTN:null, MOOV:null, Celtiis:null });
+  const [capitalCash,   setCapitalCash]   = useState(null);
+  const [showCashModal, setShowCashModal] = useState(false);
+  const [cashInput,     setCashInput]     = useState("");
   const [showFloatModal,setShowFloatModal]= useState(false);
   const [floatEditOp,   setFloatEditOp]  = useState(null);
   const [floatInput,    setFloatInput]   = useState("");
@@ -866,7 +870,7 @@ export default function MonPoint() {
       type:modal, operateur:form.operateur, montant:Number(form.montant),
       commission:calcCom(modal, form.operateur, Number(form.montant)),
       client:form.client||"Client", telephone:form.telephone||null,
-      forfait:null, heure:new Date().toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}),
+      heure:new Date().toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}),
       user_id:agent.telephone, localId, created_at:nowISO()
     };
     const optimistic = { ...tx, id:localId };
@@ -897,6 +901,8 @@ export default function MonPoint() {
   function loadFloats(date) {
     const stored = lsGet(floatKey(date, agent.telephone));
     setFloats(stored || { MTN:null, MOOV:null, Celtiis:null });
+    const storedCash = lsGet(cashKey(date, agent.telephone));
+    setCapitalCash(storedCash !== null && storedCash !== undefined ? Number(storedCash) : null);
   }
 
   function saveFloat(op, solde) {
@@ -905,12 +911,19 @@ export default function MonPoint() {
     lsSet(floatKey(selectedDate, agent.telephone), updated);
   }
 
+  function calcCashActuel() {
+    if (capitalCash === null) return null;
+    const depots   = txs.filter(t=>t.type==="depot")   .reduce((s,t)=>s+Number(t.montant),0);
+    const retraits = txs.filter(t=>t.type==="retrait") .reduce((s,t)=>s+Number(t.montant),0);
+    // Dépôt    → cash monte  (client apporte cash)
+    // Retrait  → cash descend (agent donne cash)
+    return capitalCash + depots - retraits + unites;
+  }
+
   function calcFloatActuel(op) {
     if (floats[op] === null || floats[op] === undefined) return null;
     const depots   = txs.filter(t=>t.operateur===op&&t.type==="depot")  .reduce((s,t)=>s+Number(t.montant),0);
     const retraits = txs.filter(t=>t.operateur===op&&t.type==="retrait").reduce((s,t)=>s+Number(t.montant),0);
-    // Dépôt → agent envoie unités → float baisse
-    // Retrait → agent reçoit unités → float monte
     return floats[op] - depots + retraits;
   }
 
@@ -985,7 +998,7 @@ export default function MonPoint() {
       {/* FLASH */}
       {flash && (
         <div style={{ position:"fixed", top:20, left:"50%", transform:"translateX(-50%)", background:TYPE_COLOR[flash]||"#9B5FDE", color:"#fff", borderRadius:14, padding:"12px 28px", fontWeight:800, fontSize:14, zIndex:9999, boxShadow:"0 4px 24px #0009", whiteSpace:"nowrap" }}>
-          ✅ {TYPE_LABEL[flash]||"Forfait"} enregistré !
+          ✅ {TYPE_LABEL[flash]||"Opération"} enregistrée !
         </div>
       )}
 
@@ -1159,12 +1172,77 @@ export default function MonPoint() {
           {/* ══ ACCUEIL ══ */}
           {tab==="accueil" && (<>
 
-            {/* ══ CARTE SOLDE DE DÉPART ══ */}
+            {/* ══ CARTE CAPITAL CASH ══ */}
+            {(()=>{
+              const cashActuel = calcCashActuel();
+              const cashPct = capitalCash > 0 && cashActuel !== null ? Math.max(0, Math.min(100, (cashActuel / capitalCash) * 100)) : 0;
+              const cashColor = cashActuel === null ? T.sub : cashActuel < 0 ? "#E63946" : cashActuel / (capitalCash||1) < 0.2 ? "#FFB800" : "#00C896";
+              const depTotaux   = txs.filter(t=>t.type==="depot")  .reduce((s,t)=>s+Number(t.montant),0);
+              const retTotaux = txs.filter(t=>t.type==="retrait").reduce((s,t)=>s+Number(t.montant),0);
+              return (
+                <div style={{ background:T.card, borderRadius:16, padding:desktop?22:18, marginBottom:14, border:`1px solid #00C89630` }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
+                    <div>
+                      <div style={{ fontWeight:800, fontSize:14 }}>💵 Capital Cash</div>
+                      <div style={{ fontSize:11, color:T.sub, marginTop:2 }}>Argent liquide disponible</div>
+                    </div>
+                    {isToday && (
+                      <button onClick={()=>{setCashInput(capitalCash!==null?String(capitalCash):"");setShowCashModal(true);}}
+                        style={{ background:"#00C89618", border:"1px solid #00C89640", borderRadius:9, padding:"6px 14px", color:"#00C896", fontSize:11, fontWeight:800, cursor:"pointer" }}>
+                        {capitalCash===null ? "+ Définir" : "✏️ Modifier"}
+                      </button>
+                    )}
+                  </div>
+
+                  {capitalCash === null ? (
+                    <div style={{ textAlign:"center", padding:"12px 0", color:T.faint, fontSize:13 }}>
+                      Entre ton capital cash du matin pour suivre ta liquidité
+                    </div>
+                  ) : (
+                    <>
+                      {/* Montant principal */}
+                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-end", marginBottom:10 }}>
+                        <div>
+                          <div style={{ fontSize:11, color:T.sub }}>Départ</div>
+                          <div style={{ fontSize:15, fontWeight:700, color:T.sub }}>{fF(capitalCash)}</div>
+                        </div>
+                        <div style={{ textAlign:"right" }}>
+                          <div style={{ fontSize:11, color:T.sub }}>Disponible maintenant</div>
+                          <div style={{ fontSize:26, fontWeight:900, color:cashColor }}>{fF(cashActuel)}</div>
+                        </div>
+                      </div>
+
+                      {/* Barre de progression */}
+                      <div style={{ height:6, background:T.faint, borderRadius:3, overflow:"hidden", marginBottom:10 }}>
+                        <div style={{ height:"100%", width:`${cashPct}%`, background:cashColor, borderRadius:3, transition:"width 0.4s ease" }} />
+                      </div>
+
+                      {/* Détail +/- */}
+                      <div style={{ display:"flex", gap:8 }}>
+                        {depTotaux > 0 && <div style={{ flex:1, background:"#00C89610", border:"1px solid #00C89625", borderRadius:8, padding:"6px 10px", fontSize:11 }}>
+                          <span style={{ color:T.sub }}>⬇️ Dépôts </span><span style={{ color:"#00C896", fontWeight:800 }}>+{fF(depTotaux)}</span>
+                        </div>}
+                        {retTotaux > 0 && <div style={{ flex:1, background:"#E6394610", border:"1px solid #E6394625", borderRadius:8, padding:"6px 10px", fontSize:11 }}>
+                          <span style={{ color:T.sub }}>⬆️ Retraits </span><span style={{ color:"#E63946", fontWeight:800 }}>-{fF(retTotaux)}</span>
+                        </div>}
+                        </div>}
+                      </div>
+
+                      {/* Alertes */}
+                      {cashActuel < 0 && <div style={{ marginTop:8, background:"#E6394620", border:"1px solid #E6394650", borderRadius:8, padding:"6px 12px", fontSize:11, color:"#E63946", fontWeight:800 }}>🚨 Cash insuffisant ! Tu dois {fF(Math.abs(cashActuel))} de plus</div>}
+                      {cashActuel >= 0 && cashActuel / (capitalCash||1) < 0.2 && <div style={{ marginTop:8, background:"#FFB80015", border:"1px solid #FFB80035", borderRadius:8, padding:"6px 12px", fontSize:11, color:"#FFB800", fontWeight:700 }}>⚠️ Cash faible — pense à te réapprovisionner</div>}
+                    </>
+                  )}
+                </div>
+              );
+            })()}
+
+          {/* ══ CARTE SOLDE DE DÉPART ══ */}
             <div style={{ background:T.card, borderRadius:16, padding:desktop?22:18, marginBottom:14, border:`1px solid #7B2FBE30` }}>
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
                 <div>
                   <div style={{ fontWeight:800, fontSize:14 }}>💼 Solde de départ</div>
-                  <div style={{ fontSize:11, color:T.sub, marginTop:2 }}>Tes unités disponibles ce jour</div>
+                  <div style={{ fontSize:11, color:T.sub, marginTop:2 }}>Solde électronique par réseau</div>
                 </div>
                 {isToday && (
                   <button onClick={()=>{setFloatEditOp(null);setFloatInput("");setShowFloatModal(true);}}
@@ -1232,499 +1310,10 @@ export default function MonPoint() {
               })}
             </div>
 
-            {/* ══ VENTE UNITÉS — 3 TAPS ══ */}
-            {isToday && (
-            <div style={{ background:T.card, borderRadius:16, padding:desktop?22:18, marginBottom:14, border:`1px solid #9B5FDE30` }}>
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
-                <div>
-                  <div style={{ fontWeight:800, fontSize:14 }}>📦 Vente d'unités</div>
-                  <div style={{ fontSize:11, color:T.sub, marginTop:2 }}>Enregistre en 3 taps</div>
-                </div>
-                <div style={{ fontSize:11, color:"#9B5FDE", fontWeight:700 }}>{txs.filter(t=>t.type==="forfait").length} vendu{txs.filter(t=>t.type==="forfait").length>1?"s":""}</div>
-              </div>
-
-              {/* Étape 1 — Type de forfait */}
-              <div style={{ marginBottom:12 }}>
-                <div style={{ fontSize:10, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:8 }}>1 — TYPE</div>
-                <div style={{ display:"flex", gap:8 }}>
-                  {[["internet","🌐","Internet"],["appel","📞","Appel"],["simple","📱","Simple"]].map(([k,ico,lbl])=>(
-                    <button key={k} onClick={()=>setForm(f=>({...f, forfaitType:f.forfaitType===k?null:k, forfaitPrix:null}))}
-                      style={{ flex:1, padding:"10px 4px", borderRadius:11, border:`2px solid ${form.forfaitType===k?"#9B5FDE":T.border}`, background:form.forfaitType===k?"#9B5FDE18":"transparent", color:form.forfaitType===k?"#9B5FDE":T.sub, fontWeight:800, fontSize:12, cursor:"pointer", textAlign:"center" }}>
-                      <div style={{ fontSize:16 }}>{ico}</div>
-                      <div style={{ marginTop:2 }}>{lbl}</div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Étape 2 — Opérateur */}
-              {form.forfaitType && (
-                <div style={{ marginBottom:12 }}>
-                  <div style={{ fontSize:10, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:8 }}>2 — RÉSEAU</div>
-                  <div style={{ display:"flex", gap:8 }}>
-                    {OPERATORS.map(op=>(
-                      <button key={op} onClick={()=>setForm(f=>({...f, forfaitOp:f.forfaitOp===op?null:op, forfaitPrix:null}))}
-                        style={{ flex:1, padding:"10px 0", borderRadius:11, border:`2px solid ${form.forfaitOp===op?OP_COLORS[op]:T.border}`, background:form.forfaitOp===op?OP_BG[op]:"transparent", color:form.forfaitOp===op?OP_COLORS[op]:T.sub, fontWeight:800, fontSize:13, cursor:"pointer" }}>
-                        {op}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Étape 3 — Prix */}
-              {form.forfaitType && form.forfaitOp && (()=>{
-                const GRILLES = {
-                  MTN: {
-                    internet:[100,300,500,1000,2000,3500,6000,15100,20000,25000,30000,50000,75000,100000],
-                    appel:   [100,150,200,300,500,1000,1500,2500,5000],
-                    simple:  [100,200,500,1000,2000,5000,10000],
-                  },
-                  MOOV: {
-                    internet:[200,500,1000,2000,4500,8000,15000,15500,20000,50000],
-                    appel:   [100,200,500,1000,2500,5000],
-                    simple:  [100,200,500,1000,2000,5000],
-                  },
-                  Celtiis: {
-                    internet:[1000,3000,5000,10000,20000],
-                    appel:   [100,150,200,500,1500,3000,5000,10000],
-                    simple:  [200,500,1000,2000,5000],
-                  },
-                };
-                const prix = GRILLES[form.forfaitOp]?.[form.forfaitType] || [];
-                return (
-                  <div style={{ marginBottom:12 }}>
-                    <div style={{ fontSize:10, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:8 }}>3 — MONTANT</div>
-                    <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
-                      {prix.map(p=>(
-                        <button key={p} onClick={()=>setForm(f=>({...f, forfaitPrix:p}))}
-                          style={{ padding:"7px 12px", borderRadius:9, border:`2px solid ${form.forfaitPrix===p?OP_COLORS[form.forfaitOp]:T.border}`, background:form.forfaitPrix===p?OP_BG[form.forfaitOp]:"transparent", color:form.forfaitPrix===p?OP_COLORS[form.forfaitOp]:T.sub, fontWeight:700, fontSize:12, cursor:"pointer" }}>
-                          {p>=1000?(p/1000)+"k":p} F
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })()}
-
-              {/* Bouton enregistrer forfait */}
-              {form.forfaitType && form.forfaitOp && form.forfaitPrix && (
-                <button onClick={async ()=>{
-                  setSaving(true);
-                  const localId = Date.now();
-                  const typeLabels = {internet:"🌐 Internet",appel:"📞 Appel",simple:"📱 Simple"};
-                  const tx = {
-                    type:"forfait", operateur:form.forfaitOp,
-                    montant:Number(form.forfaitPrix), commission:0,
-                    client:typeLabels[form.forfaitType]||"Forfait",
-                    telephone:null, forfait:form.forfaitType,
-                    heure:new Date().toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}),
-                    user_id:agent.telephone, localId, created_at:nowISO()
-                  };
-                  const optimistic = {...tx, id:localId};
-                  setTxs(p=>[optimistic,...p]);
-                  const saved = await saveTxRemote(tx);
-                  if(saved){setTxs(p=>p.map(t=>t.id===localId?saved:t));}
-                  else{const pend=lsGet(pendKey(agent.telephone))||[];lsSet(pendKey(agent.telephone),[...pend,tx]);setPendingCount(c=>c+1);}
-                  const cached=lsGet(txKey(selectedDate,agent.telephone))||[];
-                  lsSet(txKey(selectedDate,agent.telephone),[saved||optimistic,...cached]);
-                  setSaving(false); setForm({}); setFlash("forfait"); setTimeout(()=>setFlash(null),2200);
-                  setTimeout(()=>loadTxs(selectedDate),1200);
-                }} disabled={saving}
-                  style={{ width:"100%", padding:14, borderRadius:12, background:saving?"#1A1D2E":"linear-gradient(135deg,#9B5FDE,#7B2FBE)", border:"none", color:saving?T.sub:"#fff", fontWeight:900, fontSize:14, cursor:saving?"not-allowed":"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
-                  {saving?"⏳ Sauvegarde…":`✅ Enregistrer — ${form.forfaitOp} ${form.forfaitType} ${fF(form.forfaitPrix)}`}
-                </button>
-              )}
-            </div>
-            )}
-
-            <button onClick={shareReport} style={{ width:"100%", padding:16, borderRadius:16, background:"linear-gradient(135deg,#25D366,#128C7E)", border:"none", color:"#fff", fontWeight:800, fontSize:14, cursor:"pointer", marginBottom:14, display:"flex", alignItems:"center", justifyContent:"center", gap:10 }}>
-              <span style={{ fontSize:20 }}>📤</span> Envoyer le point du jour sur WhatsApp
-            </button>
-
-            <div style={{ background:T.card, borderRadius:16, padding:desktop?22:18, marginBottom:14, border:`1px solid ${T.border}` }}>
-              <div style={{ fontWeight:800, fontSize:14, marginBottom:16 }}>Par opérateur</div>
-              {OPERATORS.map((op,i)=>{
-                const o = txs.filter(t=>t.operateur===op);
-                return (
-                  <div key={op} style={{ display:"flex", alignItems:"center", gap:12, padding:"11px 0", borderBottom:i<2?`1px solid ${T.border}`:"none" }}>
-                    <div style={{ width:36, height:36, background:OP_BG[op], border:`1px solid ${OP_COLORS[op]}40`, borderRadius:10, display:"flex", alignItems:"center", justifyContent:"center", fontSize:9, fontWeight:900, color:OP_COLORS[op], flexShrink:0 }}>{op}</div>
-                    <div style={{ flex:1 }}>
-                      <div style={{ fontSize:13, fontWeight:700 }}>{op}</div>
-                      <div style={{ fontSize:11, color:T.sub }}>{o.length} opération{o.length>1?"s":""}</div>
-                    </div>
-                    <div style={{ fontWeight:900, color:OP_COLORS[op], fontSize:15 }}>{fF(o.reduce((s,t)=>s+Number(t.montant),0))}</div>
-                  </div>
-                );
-              })}
-            </div>
-
-           
-
-            <div style={{ background:T.card, borderRadius:16, padding:desktop?22:18, border:`1px solid ${T.border}` }}>
-              <div style={{ fontWeight:800, fontSize:14, marginBottom:16 }}>Dernières opérations</div>
-              {loading && <div style={{ textAlign:"center", color:T.faint, padding:"24px 0", fontSize:13 }}>⏳ Chargement…</div>}
-              {!loading && txs.length===0 && <div style={{ textAlign:"center", color:T.faint, padding:"32px 0", fontSize:13 }}>{isToday?"Aucune opération · Appuie sur ⬇️ ou ⬆️":"Aucune opération ce jour"}</div>}
-              {txs.slice(0,6).map((t,i)=>(
-                <div key={t.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"11px 0", borderBottom:i<Math.min(txs.length,8)-1?`1px solid ${T.border}`:"none" }}>
-                  <div style={{ width:38, height:38, borderRadius:11, background:`${TYPE_COLOR[t.type]}15`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:17, flexShrink:0 }}>{TYPE_ICON[t.type]}</div>
-                  <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ fontSize:13, fontWeight:700 }}>{TYPE_LABEL[t.type]} <span style={{ color:OP_COLORS[t.operateur] }}>{t.operateur}</span></div>
-                    <div style={{ fontSize:11, color:T.sub, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{t.client}{t.telephone?` · +229 ${t.telephone}`:""} · {t.heure}</div>
-                  </div>
-                  <div style={{ textAlign:"right", flexShrink:0 }}>
-                    <div style={{ fontWeight:900, color:TYPE_COLOR[t.type], fontSize:14 }}>{fF(t.montant)}</div>
-                    <div style={{ fontSize:11, color:T.sub }}>{t.heure||""}</div>
-                  </div>
-                  {isToday && <button onClick={()=>setConfirm(t.id)} style={{ background:"none", border:"none", color:T.faint, cursor:"pointer", fontSize:15, flexShrink:0, padding:"0 4px" }}>🗑️</button>}
-                </div>
-              ))}
-            </div>
-          </>)}
-
-          {/* ══ STATS ══ */}
-          {tab==="stats" && (
-            <div>
-              <div style={{ fontWeight:900, fontSize:desktop?20:18, marginBottom:20 }}>📊 Statistiques</div>
-{["depot","retrait"].map(type=>{
-                const tTxs = txs.filter(t=>t.type===type);
-                return (
-                  <div key={type} style={{ background:T.card, borderRadius:16, padding:desktop?20:16, marginBottom:12, border:`1px solid ${TYPE_COLOR[type]}22` }}>
-                    <div style={{ display:"flex", justifyContent:"space-between", marginBottom:14 }}>
-                      <div style={{ fontWeight:800, fontSize:14 }}>{TYPE_ICON[type]} {TYPE_LABEL[type]}s</div>
-                      <div>
-                        <span style={{ color:TYPE_COLOR[type], fontWeight:900 }}>{fF(tTxs.reduce((s,t)=>s+Number(t.montant),0))}</span>
-                        <span style={{ color:T.sub, fontSize:11 }}> · {fF(tTxs.reduce((s,t)=>s+Number(t.commission),0))}</span>
-                      </div>
-                    </div>
-                    {OPERATORS.map((op,i)=>{
-                      const o = txs.filter(t=>t.type===type&&t.operateur===op);
-                      return (
-                        <div key={op} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"9px 0", borderBottom:i<2?`1px solid ${T.border}`:"none", fontSize:13 }}>
-                          <div><span style={{ color:OP_COLORS[op], fontWeight:700 }}>{op}</span><span style={{ color:T.faint, fontSize:11 }}> {o.length} opération{o.length>1?"s":""}</span></div>
-                          <div><span style={{ fontWeight:700 }}>{fF(o.reduce((s,t)=>s+Number(t.montant),0))}</span><span style={{ color:T.sub, fontSize:11 }}> +{fF(o.reduce((s,t)=>s+Number(t.commission),0))}</span></div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              })}
-              <button onClick={shareReport} style={{ width:"100%", padding:16, borderRadius:14, background:"linear-gradient(135deg,#25D366,#128C7E)", border:"none", color:"#fff", fontWeight:800, fontSize:14, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:10 }}>
-                <span style={{ fontSize:20 }}>📤</span> Partager ce rapport
-              </button>
-            </div>
-          )}
-
-          {/* ══ HISTORIQUE ══ */}
-          {tab==="historique" && (
-            <div>
-              <div style={{ fontWeight:900, fontSize:desktop?20:18, marginBottom:20 }}>🗂️ Historique</div>
-              {loading && <div style={{ textAlign:"center", color:T.faint, padding:"48px 0" }}>⏳ Chargement…</div>}
-              {!loading && txs.length===0 && <div style={{ textAlign:"center", color:T.faint, padding:"56px 0", fontSize:14 }}>Aucune opération {isToday?"enregistrée":"ce jour"}</div>}
-              <div style={{ display:"grid", gridTemplateColumns:desktop?"1fr 1fr":"1fr", gap:10 }}>
-                {txs.map(t=>(
-                  <div key={t.id} style={{ background:T.card, borderRadius:14, padding:"14px 16px", border:`1px solid ${TYPE_COLOR[t.type]}18`, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                    <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-                      <div style={{ width:38, height:38, borderRadius:11, background:`${TYPE_COLOR[t.type]}15`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16, flexShrink:0 }}>{TYPE_ICON[t.type]}</div>
-                      <div>
-                        <div style={{ fontWeight:700, fontSize:13 }}>{TYPE_LABEL[t.type]} · <span style={{ color:OP_COLORS[t.operateur] }}>{t.operateur}</span></div>
-                        <div style={{ fontSize:11, color:T.sub }}>{t.client}{t.telephone?` · +229 ${t.telephone}`:""} · {t.heure}</div>
-                      </div>
-                    </div>
-                    <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                      <div style={{ textAlign:"right" }}>
-                        <div style={{ fontWeight:900, color:TYPE_COLOR[t.type], fontSize:15 }}>{fF(t.montant)}</div>
-                        <div style={{ fontSize:11, color:T.sub }}>{t.heure||""}</div>
-                      </div>
-                      {isToday && <button onClick={()=>setConfirm(t.id)} style={{ background:"none", border:"none", color:T.faint, cursor:"pointer", fontSize:15, padding:4 }}>🗑️</button>}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* ══ PROFIL ══ */}
-          {tab==="profil" && (
-            <div>
-              <div style={{ fontWeight:900, fontSize:desktop?20:18, marginBottom:20 }}>👤 Mon Profil</div>
-
-              {/* Infos agent */}
-              <div style={{ background:T.card, borderRadius:18, padding:desktop?26:20, marginBottom:14, border:`1px solid ${T.border}` }}>
-                <div style={{ display:"flex", alignItems:"center", gap:16, marginBottom:20 }}>
-                  <div style={{ width:58, height:58, background:"linear-gradient(135deg,#00C896,#00A5FF)", borderRadius:17, display:"flex", alignItems:"center", justifyContent:"center", fontWeight:900, fontSize:24, color:"#fff", flexShrink:0, boxShadow:"0 4px 16px #00C89640" }}>
-                    {agent.nom?.charAt(0).toUpperCase()}
-                  </div>
-                  <div>
-                    <div style={{ fontWeight:900, fontSize:18 }}>{agent.nom}</div>
-                    <div style={{ fontSize:13, color:T.sub }}>Agent Mobile Money</div>
-                    <div style={{ fontSize:12, color:OP_COLORS[agent.reseau]||"#00C896", marginTop:3, fontWeight:700 }}>{agent.reseau} · +229 {agent.telephone}</div>
-                  </div>
-                </div>
-                <div style={{ display:"grid", gridTemplateColumns:desktop?"1fr 1fr":"1fr", gap:10 }}>
-                  {[
-                    ["📱 Réseau", agent.reseau],
-                    ["📞 WhatsApp", `+229 ${agent.telephone}`],
-                                        ["📅 Inscrit le", agent.trial_start ? new Date(agent.trial_start).toLocaleDateString("fr-FR") : "—"],
-                  ].map(([label,value])=>(
-                    <div key={label} style={{ background:T.hero, borderRadius:12, padding:"12px 16px" }}>
-                      <div style={{ fontSize:11, color:T.sub }}>{label}</div>
-                      <div style={{ fontSize:14, fontWeight:700, marginTop:3 }}>{value}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Statut abonnement */}
-              <div style={{ background:T.card, borderRadius:18, padding:desktop?22:18, marginBottom:14, border:`1px solid ${trialColor}30` }}>
-                <div style={{ fontWeight:800, fontSize:14, marginBottom:14 }}>⏳ Mon abonnement</div>
-                {trialInfo?.status === "trial" && (
-                  <div style={{ background:trialBg, border:`1px solid ${trialColor}40`, borderRadius:12, padding:"14px 16px", marginBottom:14 }}>
-                    <div style={{ fontSize:15, fontWeight:900, color:trialColor }}>
-                      {trialInfo.daysLeft} jour{trialInfo.daysLeft>1?"s":""} d'essai restant{trialInfo.daysLeft>1?"s":""}
-                    </div>
-                    <div style={{ fontSize:12, color:T.sub, marginTop:4 }}>
-                      {agent.trial_extended ? "✅ Tu as déjà profité du bonus parrainage (30j total)" : "Invite 1 ami → gagne +16 jours gratuits"}
-                    </div>
-                  </div>
-                )}
-                {trialInfo?.status === "subscribed" && (
-                  <div style={{ background:"#00C89618", border:"1px solid #00C89640", borderRadius:12, padding:"14px 16px", marginBottom:14 }}>
-                    <div style={{ fontSize:15, fontWeight:900, color:"#00C896" }}>✅ Abonnement actif</div>
-                    <div style={{ fontSize:12, color:T.sub, marginTop:4 }}>{trialInfo.daysLeft} jours restants</div>
-                  </div>
-                )}
-                {trialInfo?.status !== "subscribed" && (
-                  <div style={{ background:`linear-gradient(135deg,${T.hero},${T.card})`, border:`1px solid #00C89630`, borderRadius:12, padding:"16px 18px", textAlign:"center" }}>
-                    <div style={{ fontSize:12, color:T.sub, marginBottom:4 }}>Abonnement mensuel</div>
-                    <div style={{ fontSize:28, fontWeight:900, color:"#00C896", marginBottom:10 }}>1 999 F/mois</div>
-                    <button onClick={()=>setShowPaywall(true)}
-                      style={{ width:"100%", padding:14, borderRadius:12, background:"linear-gradient(135deg,#00C896,#00A5FF)", border:"none", color:"#fff", fontWeight:800, fontSize:14, cursor:"pointer" }}>
-                      💳 S'abonner maintenant
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {/* Parrainage */}
-              <div style={{ background:T.card, borderRadius:18, padding:desktop?22:18, marginBottom:14, border:"1px solid #FFB80030" }}>
-                <div style={{ fontWeight:800, fontSize:14, marginBottom:14 }}>🎁 Parrainage</div>
-                <div style={{ background:"#FFB80012", border:"1px solid #FFB80030", borderRadius:12, padding:"14px 16px", marginBottom:14 }}>
-                  <div style={{ fontSize:13, color:"#FFB800", fontWeight:700, marginBottom:6 }}>
-                    {agent.trial_extended
-                      ? `✅ Bonus utilisé — ${agent.referral_count||0} ami(s) inscrit(s)`
-                      : `👥 ${agent.referral_count||0}/1 ami inscrit — invite 1 ami pour +16 jours !`
-                    }
-                  </div>
-                  <div style={{ fontSize:11, color:T.sub }}>
-                    Partage ton lien. Dès qu'un ami s'inscrit et utilise l'app, tu gagnes automatiquement <strong style={{color:"#FFB800"}}>16 jours gratuits</strong>.
-                  </div>
-                </div>
-                <div style={{ display:"flex", gap:8 }}>
-                  <div style={{ flex:1, background:T.hero, borderRadius:10, padding:"10px 14px", fontSize:11, color:T.sub, wordBreak:"break-all" }}>
-                    {getReferralLink(agent.telephone)}
-                  </div>
-                  <button onClick={()=>{ navigator.clipboard?.writeText(getReferralLink(agent.telephone)); setFlash("depot"); setTimeout(()=>setFlash(null),2000); }}
-                    style={{ flexShrink:0, padding:"10px 16px", borderRadius:10, background:"#FFB80020", border:"1px solid #FFB80050", color:"#FFB800", fontWeight:700, fontSize:12, cursor:"pointer" }}>
-                    📋 Copier
-                  </button>
-                </div>
-                <button onClick={()=>{ const url = getReferralLink(agent.telephone); const text = `📱 J'utilise Mon Point pour gérer mon point MoMo — c'est trop pratique ! Essaie gratuitement : ${url}`; window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank"); }}
-                  style={{ width:"100%", marginTop:10, padding:12, borderRadius:12, background:"linear-gradient(135deg,#25D366,#128C7E)", border:"none", color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
-                  <span>📤</span> Partager via WhatsApp
-                </button>
-              </div>
-
-              {/* Données offline */}
-              <div style={{ background:T.card, borderRadius:18, padding:desktop?22:18, marginBottom:14, border:`1px solid ${T.border}` }}>
-                <div style={{ fontWeight:800, fontSize:14, marginBottom:8 }}>💾 Synchronisation</div>
-                <div style={{ fontSize:12, color:T.sub, marginBottom:12 }}>Tes données sont sauvegardées sur Supabase et synchronisées automatiquement.</div>
-                {pendingCount > 0
-                  ? <div style={{ background:"#FFB80018", border:"1px solid #FFB80040", borderRadius:10, padding:"10px 14px", fontSize:12, color:"#FFB800", fontWeight:700 }}>⚡ {pendingCount} opération(s) en attente</div>
-                  : <div style={{ background:"#00C89618", border:"1px solid #00C89630", borderRadius:10, padding:"10px 14px", fontSize:12, color:"#00C896", fontWeight:700 }}>✅ Toutes les données sont synchronisées</div>
-                }
-              </div>
-
-              {/* Thème */}
-              <div style={{ background:T.card, borderRadius:18, padding:desktop?22:18, marginBottom:14, border:`1px solid ${T.border}` }}>
-                <div style={{ fontWeight:800, fontSize:14, marginBottom:14 }}>⚙️ Préférences</div>
-                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                  <div>
-                    <div style={{ fontWeight:700, fontSize:13 }}>{dark?"Mode sombre":"Mode clair"}</div>
-                    <div style={{ fontSize:11, color:T.sub }}>Changer l'apparence</div>
-                  </div>
-                  <button onClick={()=>setDark(d=>!d)} style={{ padding:"9px 18px", borderRadius:10, background:T.hero, border:`1px solid ${T.border}`, color:T.text, fontSize:13, fontWeight:700, cursor:"pointer" }}>
-                    {dark?"☀️ Clair":"🌙 Sombre"}
-                  </button>
-                </div>
-              </div>
-
-              <button onClick={()=>setConfirmLogout(true)} style={{ width:"100%", padding:17, borderRadius:15, background:"#E6394618", border:"2px solid #E6394640", color:"#E63946", fontWeight:800, fontSize:15, cursor:"pointer" }}>
-                🔓 Se déconnecter
-              </button>
-            </div>
-          )}
-
-        </div>
-      </main>
-
-      {/* ══ FABs ════════════════════════════════════════════════════════ */}
-      {!desktop && isToday && (
-        <div style={{ position:"fixed", bottom:mobile?116:124, right:tablet?22:16, display:"flex", flexDirection:"column", gap:10, zIndex:60 }}>
-          <button onClick={()=>{setModal("retrait");setForm({});}}
-            style={{ height:48, paddingLeft:16, paddingRight:18, borderRadius:24, background:"#4F8EF7", border:"none", color:"#fff", fontSize:13, fontWeight:800, cursor:"pointer", boxShadow:"0 4px 18px #4F8EF760", display:"flex", alignItems:"center", gap:8, whiteSpace:"nowrap" }}>
-            <span style={{ fontSize:18 }}>⬆️</span> Retrait
-          </button>
-          <button onClick={()=>{setModal("depot");setForm({});}}
-            style={{ height:54, paddingLeft:18, paddingRight:20, borderRadius:27, background:"linear-gradient(135deg,#00C896,#009E78)", border:"none", color:"#fff", fontSize:14, fontWeight:900, cursor:"pointer", boxShadow:"0 6px 24px #00C89660", display:"flex", alignItems:"center", gap:8, whiteSpace:"nowrap" }}>
-            <span style={{ fontSize:20 }}>⬇️</span> Dépôt
-          </button>
-        </div>
-      )}
-
-      {/* ══ BOTTOM NAV ══════════════════════════════════════════════════ */}
-      {!desktop && (
-        <nav style={{ position:"fixed", bottom:0, left:0, right:0, background:T.nav, borderTop:`1px solid ${T.border}`, zIndex:50 }}>
-          <div style={{ display:"flex", justifyContent:"space-around", padding:tablet?"10px 0 14px":"8px 0 12px" }}>
-            {NAV_ITEMS.map(([key,icon,label])=>(
-              <button key={key} onClick={()=>setTab(key)} style={{ background:"none", border:"none", color:tab===key?"#00C896":T.faint, fontSize:tablet?11:10, fontWeight:tab===key?800:500, cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", gap:3, padding:tablet?"0 18px":"0 12px", WebkitTapHighlightColor:"transparent" }}>
-                <span style={{ fontSize:tablet?23:21 }}>{icon}</span>{label}
-                {tab===key && <div style={{ width:4, height:4, borderRadius:"50%", background:"#00C896" }} />}
-              </button>
-            ))}
-          </div>
-        </nav>
-      )}
-
-      {/* ══ MODAL SAISIE ════════════════════════════════════════════════ */}
-      {modal && (
-        <div style={modalWrap} onClick={()=>setModal(null)}>
-          <div onClick={e=>e.stopPropagation()} style={modalBox}>
-            {!desktop && <div style={{ width:36, height:4, background:T.border2, borderRadius:2, margin:"0 auto 18px" }} />}
-            <div style={{ fontWeight:900, fontSize:18, marginBottom:18 }}>
-              {modal==="depot"?"⬇️ Nouveau Dépôt":"⬆️ Nouveau Retrait"}
-            </div>
-
-            {modal==="retrait" && (
-              <div style={{ marginBottom:16 }}>
-                {form.montant && Number(form.montant)>=100 ? (()=>{
-                  const tranche = getTranche(form.montant);
-                  const c = form.operateur ? calcComRetrait(form.operateur, form.montant) : 0;
-                  return tranche ? (
-                    <div style={{ background:"#4F8EF712", border:"1px solid #4F8EF735", borderRadius:14, padding:"14px 16px" }}>
-                      <div style={{ fontSize:11, color:"#4F8EF7", fontWeight:700, marginBottom:10 }}>
-                        📊 TRANCHE : {Number(tranche.min).toLocaleString("fr-FR")} – {Number(tranche.max).toLocaleString("fr-FR")} F
-                      </div>
-                      <div style={{ display:"flex", gap:8, marginBottom:form.operateur?12:0 }}>
-                        {["MTN","MOOV","Celtiis"].map(op=>{
-                          const sel = op===form.operateur;
-                          return (
-                            <div key={op} style={{ flex:1, textAlign:"center", background:sel?`${OP_COLORS[op]}20`:T.hero, border:`2px solid ${sel?OP_COLORS[op]:T.border}`, borderRadius:11, padding:"10px 4px" }}>
-                              <div style={{ fontSize:10, color:OP_COLORS[op], fontWeight:800, marginBottom:4 }}>{op}</div>
-                              <div style={{ fontSize:15, fontWeight:900, color:sel?OP_COLORS[op]:T.text }}>{fF(tranche[op])}</div>
-                              {sel && <div style={{ fontSize:9, color:OP_COLORS[op], marginTop:2, fontWeight:700 }}>✓ sélectionné</div>}
-                            </div>
-                          );
-                        })}
-                      </div>
-                      {form.operateur && (
-                        <div style={{ background:"#00C89618", border:"1px solid #00C89630", borderRadius:10, padding:"10px 14px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                          <span style={{ fontSize:12, color:T.sub }}>💰 Ta commission</span>
-                          <span style={{ fontSize:18, fontWeight:900, color:"#00C896" }}>{fF(c)}</span>
-                        </div>
-                      )}
-                    </div>
-                  ) : <div style={{ background:"#E6394612", border:"1px solid #E6394635", borderRadius:12, padding:"12px 14px", fontSize:13, color:"#E63946", fontWeight:700 }}>⚠️ Montant hors grille (100 F – 2 000 000 F)</div>;
-                })() : (
-                  <div style={{ background:T.hero, border:`1px solid ${T.border}`, borderRadius:12, padding:"12px 16px", fontSize:12, color:T.sub }}>
-                    💡 Entre le montant pour voir la commission automatiquement
-                  </div>
-                )}
-              </div>
-            )}
-
-            {modal==="depot" && (
-              <div style={{ background:"#00C89610", border:"1px solid #00C89625", borderRadius:12, padding:"11px 14px", marginBottom:16, fontSize:12, color:"#00C896", display:"flex", alignItems:"center", gap:8 }}>
-                <span>ℹ️</span><span>Aucune commission sur les dépôts.</span>
-              </div>
-            )}
-
-            <div style={{ marginBottom:16 }}>
-              <div style={{ fontSize:11, color:T.sub, marginBottom:8, fontWeight:700, letterSpacing:1 }}>OPÉRATEUR</div>
-              <div style={{ display:"flex", gap:8 }}>
-                {OPERATORS.map(op=>(
-                  <button key={op} onClick={()=>setForm(f=>({...f,operateur:op,montant:""}))}
-                    style={{ flex:1, padding:"12px 0", borderRadius:11, border:`2px solid ${form.operateur===op?OP_COLORS[op]:T.border}`, background:form.operateur===op?OP_BG[op]:"transparent", color:form.operateur===op?OP_COLORS[op]:T.sub, fontWeight:800, fontSize:14, cursor:"pointer" }}>
-                    {op}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div style={{ marginBottom:16 }}>
-              <div style={{ fontSize:11, color:T.sub, marginBottom:8, fontWeight:700, letterSpacing:1 }}>MONTANT (FCFA)</div>
-              <input type="number" placeholder="Ex : 5000" value={form.montant||""} onChange={e=>setForm(f=>({...f,montant:e.target.value}))}
-                style={{ width:"100%", background:T.input, border:`2px solid ${T.border}`, borderRadius:12, padding:"14px 16px", color:T.text, fontSize:20, fontWeight:700, outline:"none", boxSizing:"border-box" }} />
-            </div>
-
-            <div style={{ marginBottom:22 }}>
-              <div style={{ fontSize:11, color:T.sub, marginBottom:8, fontWeight:700, letterSpacing:1 }}>NUMÉRO DE TÉLÉPHONE (optionnel)</div>
-              <div style={{ display:"flex", gap:8 }}>
-                <div style={{ background:T.input, border:`2px solid ${T.border}`, borderRadius:12, padding:"12px 10px", color:T.text, fontSize:12, fontWeight:700, flexShrink:0 }}>🇧🇯 +229</div>
-                <input type="tel" placeholder="97 00 00 00" value={form.telephone||""} onChange={e=>setForm(f=>({...f,telephone:e.target.value}))}
-                  style={{ flex:1, background:T.input, border:`2px solid ${T.border}`, borderRadius:12, padding:"12px 14px", color:T.text, fontSize:15, fontWeight:700, outline:"none", boxSizing:"border-box" }} />
-              </div>
-            </div>
-
-            <button onClick={addTx} disabled={saving}
-              style={{ width:"100%", padding:17, borderRadius:14, background:saving?"#1A1D2E":modal==="depot"?"#00C896":"#4F8EF7", border:"none", color:saving?T.sub:"#fff", fontWeight:900, fontSize:16, cursor:saving?"not-allowed":"pointer" }}>
-              {saving?"⏳ Sauvegarde…":"Enregistrer ✓"}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ══ MODAL CALENDRIER ════════════════════════════════════════════ */}
-      {showCal && (
-        <div style={{ position:"fixed", inset:0, background:"#000C", display:"flex", alignItems:desktop?"center":"flex-end", justifyContent:desktop?"center":"stretch", zIndex:300 }} onClick={()=>setShowCal(false)}>
-          <div onClick={e=>e.stopPropagation()} style={{ background:T.card, borderRadius:desktop?"20px":"22px 22px 0 0", padding:"20px 18px 36px", border:`1px solid ${T.border2}`, width:desktop?380:"100%", maxWidth:desktop?380:"100%" }}>
-            {!desktop && <div style={{ width:36, height:4, background:T.border2, borderRadius:2, margin:"0 auto 18px" }} />}
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:18 }}>
-              <button onClick={()=>{if(calMonth===1){setCalMonth(12);setCalYear(y=>y-1);}else setCalMonth(m=>m-1);}} style={{ background:T.hero, border:"none", borderRadius:9, width:36, height:36, cursor:"pointer", fontSize:18, color:T.text }}>‹</button>
-              <div style={{ fontWeight:800, fontSize:15 }}>{MOIS_FR[calMonth-1]} {calYear}</div>
-              <button onClick={()=>{if(calMonth===12){setCalMonth(1);setCalYear(y=>y+1);}else setCalMonth(m=>m+1);}} style={{ background:T.hero, border:"none", borderRadius:9, width:36, height:36, cursor:"pointer", fontSize:18, color:T.text }}>›</button>
-            </div>
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", marginBottom:8 }}>
-              {JOURS.map(j=>(<div key={j} style={{ textAlign:"center", fontSize:10, color:T.sub, fontWeight:700, padding:"4px 0" }}>{j}</div>))}
-            </div>
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:4 }}>
-              {Array(getFirstDay(calYear,calMonth)).fill(null).map((_,i)=>(<div key={`e${i}`}/>))}
-              {Array(getDaysInMonth(calYear,calMonth)).fill(null).map((_,i)=>{
-                const day=i+1, ds=`${calYear}-${String(calMonth).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
-                const isTod=ds===todayStr(), isSel=ds===selectedDate, has=activeDays.includes(ds), isFut=ds>todayStr();
-                return (
-                  <button key={day} disabled={isFut} onClick={()=>{setSelectedDate(ds);setShowCal(false);setTab("accueil");}}
-                    style={{ width:"100%", aspectRatio:"1", borderRadius:10, border:isSel?"2px solid #00C896":isTod?`2px solid ${OP_COLORS.MTN}`:`1px solid ${T.border}`, background:isSel?"#00C89620":isTod?"#FFB80015":T.hero, color:isFut?T.faint:isSel?"#00C896":T.text, fontWeight:isSel||isTod?800:500, fontSize:13, cursor:isFut?"not-allowed":"pointer", position:"relative", display:"flex", alignItems:"center", justifyContent:"center", opacity:isFut?0.3:1 }}>
-                    {day}
-                    {has&&!isSel&&<div style={{ position:"absolute", bottom:2, left:"50%", transform:"translateX(-50%)", width:3, height:3, borderRadius:"50%", background:"#00C896" }}/>}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ══ CONFIRM SUPPRESSION ════════════════════════════════════════ */}
-      
-      {/* ══ MODAL RAPPORT ══ */}
+            {/* ══ MODAL RAPPORT ══ */}
       {showReport && (()=>{
         const dateLabel = new Date(selectedDate).toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
-        const txArgent  = txs.filter(t=>t.type!=="forfait");
-        const txUnites  = txs.filter(t=>t.type==="forfait");
-        const internetC = txUnites.filter(t=>t.forfait==="internet").length;
-        const appelC    = txUnites.filter(t=>t.forfait==="appel").length;
-        const simpleC   = txUnites.filter(t=>t.forfait==="simple").length;
+        const txArgent  = txs;
         const floatLines = OPERATORS.map(op=>{
           const actuel = calcFloatActuel(op);
           if(actuel===null) return null;
@@ -1772,27 +1361,6 @@ export default function MonPoint() {
                 </div>
               </div>
 
-              {/* Séparateur UNITÉS */}
-              {txUnites.length>0&&<>
-              <div style={{ fontWeight:900, fontSize:13, color:"#9B5FDE", borderBottom:"2px solid #9B5FDE30", paddingBottom:6, marginBottom:12 }}>📦 VENTE D'UNITÉS</div>
-              {OPERATORS.map(op=>{
-                const us = txUnites.filter(t=>t.operateur===op);
-                if(us.length===0) return null;
-                const intC=us.filter(t=>t.forfait==="internet").length;
-                const apC=us.filter(t=>t.forfait==="appel").length;
-                const siC=us.filter(t=>t.forfait==="simple").length;
-                return (
-                  <div key={op} style={{ marginBottom:10, background:"#f8f8f8", borderRadius:10, padding:"10px 14px" }}>
-                    <div style={{ fontWeight:800, fontSize:13, marginBottom:4, color:"#333" }}>{op}</div>
-                    {intC>0&&<div style={{ fontSize:13 }}>🌐 Internet : <strong>{intC}</strong></div>}
-                    {apC>0&&<div style={{ fontSize:13 }}>📞 Appel : <strong>{apC}</strong></div>}
-                    {siC>0&&<div style={{ fontSize:13 }}>📱 Simple : <strong>{siC}</strong></div>}
-                    <div style={{ fontSize:12, color:"#888", marginTop:3 }}>Total : {fF(us.reduce((s,t)=>s+Number(t.montant),0))}</div>
-                  </div>
-                );
-              })}
-              </>}
-
               {/* Soldes float */}
               {floatLines.length>0&&<>
               <div style={{ fontWeight:900, fontSize:13, color:"#4F8EF7", borderBottom:"2px solid #4F8EF730", paddingBottom:6, marginBottom:12, marginTop:4 }}>💼 SOLDES</div>
@@ -1814,6 +1382,8 @@ export default function MonPoint() {
 
 `;
                 txt += `💵 *TRANSACTIONS ARGENT*
+                const cashFinal = calcCashActuel();
+                if(cashFinal !== null) txt += `💵 Cash départ : ${fF(capitalCash)} → Disponible : ${fF(cashFinal)}\n`;
 `;
                 OPERATORS.forEach(op=>{
                   const deps=txArgent.filter(t=>t.type==="depot"&&t.operateur===op);
@@ -1829,28 +1399,7 @@ export default function MonPoint() {
                   }
                 });
                 txt+=`
-💰 CA Total: ${fF(totalCA)} | ✅ Frais de retrait: ${fF(totalCom)}
-`;
-                if(txUnites.length){
-                  txt+=`
-📦 *VENTE D'UNITÉS*
-`;
-                  OPERATORS.forEach(op=>{
-                    const us=txUnites.filter(t=>t.operateur===op);
-                    if(us.length){
-                      const intC=us.filter(t=>t.forfait==="internet").length;
-                      const apC=us.filter(t=>t.forfait==="appel").length;
-                      const siC=us.filter(t=>t.forfait==="simple").length;
-                      txt+=`
-▪️ ${op}: `;
-                      if(intC) txt+=`🌐${intC} `;
-                      if(apC)  txt+=`📞${apC} `;
-                      if(siC)  txt+=`📱${siC} `;
-                      txt+=`· ${fF(us.reduce((s,t)=>s+Number(t.montant),0))}
-`;
-                    }
-                  });
-                }
+💰 CA Total: ${fF(totalCA)} | ✅ Commission: ${fF(totalCom)}
                 txt+=`
 _Mon Point_`;
                 window.open(`https://wa.me/?text=${encodeURIComponent(txt)}`,"_blank");
@@ -1890,6 +1439,57 @@ _Mon Point_`;
         </div>
       )}
 
+      {/* ══ MODAL CAPITAL CASH ══ */}
+      {showCashModal && (
+        <div style={{ position:"fixed", inset:0, background:"#000D", display:"flex", alignItems:desktop?"center":"flex-end", justifyContent:desktop?"center":"stretch", zIndex:600 }}
+          onClick={()=>setShowCashModal(false)}>
+          <div onClick={e=>e.stopPropagation()} style={{ background:T.card, borderRadius:desktop?"20px":"22px 22px 0 0", padding:"22px 20px 40px", width:desktop?420:"100%", border:`1px solid #00C89640` }}>
+            {!desktop && <div style={{ width:36, height:4, background:T.border2, borderRadius:2, margin:"0 auto 18px" }} />}
+
+            <div style={{ fontWeight:900, fontSize:18, marginBottom:4 }}>💵 Capital Cash du matin</div>
+            <div style={{ fontSize:12, color:T.sub, marginBottom:6 }}>
+              L'argent liquide total que tu as en main ce matin pour toutes tes opérations.
+            </div>
+            <div style={{ background:"#00C89612", border:"1px solid #00C89630", borderRadius:10, padding:"10px 14px", marginBottom:18, fontSize:12, color:"#00C896" }}>
+              💡 Ce montant est commun pour MTN + MOOV + CELTIIS. Les dépôts le font monter, les retraits le font descendre.
+            </div>
+
+            <div style={{ marginBottom:16 }}>
+              <div style={{ fontSize:11, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:8 }}>CAPITAL CASH (FCFA)</div>
+              <input
+                type="number"
+                placeholder="Ex : 500 000"
+                value={cashInput}
+                onChange={e=>setCashInput(e.target.value)}
+                autoFocus
+                style={{ width:"100%", background:T.input, border:`2px solid #00C896`, borderRadius:12, padding:"16px", color:T.text, fontSize:22, fontWeight:800, outline:"none", boxSizing:"border-box", textAlign:"center" }}
+              />
+            </div>
+
+            {/* Touches rapides */}
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:6, marginBottom:18 }}>
+              {[100000, 200000, 300000, 500000].map(v=>(
+                <button key={v} onClick={()=>setCashInput(String(v))}
+                  style={{ padding:"9px 0", borderRadius:9, border:`1px solid #00C89630`, background:"#00C89612", color:"#00C896", fontWeight:700, fontSize:11, cursor:"pointer" }}>
+                  {v>=1000?`${v/1000}k`:v}
+                </button>
+              ))}
+            </div>
+
+            <button onClick={()=>{
+              if (!cashInput || isNaN(Number(cashInput))) return;
+              const val = Number(cashInput);
+              setCapitalCash(val);
+              lsSet(cashKey(selectedDate, agent.telephone), val);
+              setShowCashModal(false);
+              setCashInput("");
+            }} style={{ width:"100%", padding:16, borderRadius:14, background:"linear-gradient(135deg,#00C896,#00A5FF)", border:"none", color:"#fff", fontWeight:900, fontSize:15, cursor:"pointer" }}>
+              ✅ Enregistrer le capital cash
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ══ MODAL FLOAT / SOLDE DE DÉPART ══════════════════════════════ */}
       {showFloatModal && (
         <div style={{ position:"fixed", inset:0, background:"#000D", display:"flex", alignItems:desktop?"center":"flex-end", justifyContent:desktop?"center":"stretch", zIndex:600 }}
@@ -1899,7 +1499,7 @@ _Mon Point_`;
 
             <div style={{ fontWeight:900, fontSize:18, marginBottom:4 }}>💼 Solde de départ</div>
             <div style={{ fontSize:12, color:T.sub, marginBottom:20 }}>
-              Entre le montant d'unités disponible ce matin pour chaque opérateur.
+              Entre le solde électronique de départ ce matin pour chaque réseau.
             </div>
 
             {/* Sélecteur opérateur */}
@@ -1928,7 +1528,7 @@ _Mon Point_`;
                 </div>
 
                 <div style={{ background:`${OP_COLORS[floatEditOp]}12`, border:`1px solid ${OP_COLORS[floatEditOp]}30`, borderRadius:12, padding:"12px 16px", marginBottom:16, fontSize:12, color:T.sub }}>
-                  💡 C'est le montant d'unités sur ton compte <strong style={{color:OP_COLORS[floatEditOp]}}>{floatEditOp}</strong> ce matin avant toute opération.
+                  💡 C'est le solde électronique sur ton compte <strong style={{color:OP_COLORS[floatEditOp]}}>{floatEditOp}</strong> ce matin avant toute opération.
                 </div>
 
                 <div style={{ marginBottom:18 }}>
