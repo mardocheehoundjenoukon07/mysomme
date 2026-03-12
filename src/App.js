@@ -109,6 +109,34 @@ async function flushPending(userId) {
   if (synced.length > 0) lsSet(pendKey(userId), pending.filter(t => !synced.includes(t.localId)));
   return synced;
 }
+// ─── CONSTANTES APP ──────────────────────────────────────────────────────────
+const OPERATORS   = ["MTN","MOOV","Celtiis"];
+const OP_COLORS   = { MTN:"#FFB800", MOOV:"#0066CC", Celtiis:"#E63946" };
+const OP_BG       = { MTN:"#FFB80018", MOOV:"#0066CC18", Celtiis:"#E6394618" };
+const OP_BG_D     = { MTN:"#FFB80028", MOOV:"#0066CC28", Celtiis:"#E6394628" };
+const NAV_ITEMS   = [["accueil","🏠","Accueil"],["stats","📊","Statistiques"],["historique","🗂️","Historique"]];
+const TYPE_COLOR  = { depot:"#00C896", retrait:"#4F8EF7" };
+const TYPE_ICON   = { depot:"⬇️", retrait:"⬆️" };
+const TYPE_LABEL  = { depot:"Dépôt", retrait:"Retrait" };
+const fF = n => Number(n||0).toLocaleString("fr-FR")+" F";
+function getSalutation(nom) {
+  const h = new Date().getHours();
+  const p = nom.split(" ")[0];
+  if(h<12) return `Bonjour, ${p} 👋`;
+  if(h<18) return `Bon après-midi, ${p} 👋`;
+  return `Bonsoir, ${p} 👋`;
+}
+function useWindowWidth() {
+  const [w, setW] = React.useState(window.innerWidth);
+  React.useEffect(()=>{
+    const fn = ()=>setW(window.innerWidth);
+    window.addEventListener("resize",fn);
+    return ()=>window.removeEventListener("resize",fn);
+  },[]);
+  return w;
+}
+
+
 
 
 function PinPad({ title, subtitle, onSubmit, T, error }) {
@@ -173,21 +201,16 @@ function Inscription({ onDone, T }) {
   async function handlePinConfirm(p) {
     if (p !== pin) { setError("Les codes PIN ne correspondent pas."); setStep(2); setPin(""); return; }
     setLoading(true);
-    const refCode = getRefFromURL();
     const pinHash = await hashPin(p);
     const agent = {
       nom: form.nom.trim(), telephone: form.telephone.trim(),
       reseau: form.reseau, pin: pinHash,
-      referral_code: form.telephone.trim(),
-      referred_by: refCode || null,
-      referral_count: 0,
       trial_days: 14,
       trial_extended: false,
       subscription_status: "trial",
       created_at: nowISO(), trial_start: nowISO()
     };
     const saved = await saveAgent(agent);
-    if (refCode) await crediterParrain(refCode);
     const fresh = await fetchAgent(agent.telephone);
     const trusted = fresh ? { ...fresh, pin: pinHash } : { ...(saved||agent), pin: pinHash };
     lsSet("ms_agent", trusted);
@@ -823,8 +846,6 @@ export default function MonPoint() {
   const mainLeft   = desktop ? 240 : 0;
 
   // ── Couleur bannière trial ───────────────────────────────────────────────────
-  const trialColor  = trialInfo?.daysLeft <= 3 ? "#E63946" : trialInfo?.daysLeft <= 7 ? "#FFB800" : "#00C896";
-  const trialBg     = trialInfo?.daysLeft <= 3 ? "#E6394612" : trialInfo?.daysLeft <= 7 ? "#FFB80012" : "#00C89612";
 
   return (<>
     <style>{`
