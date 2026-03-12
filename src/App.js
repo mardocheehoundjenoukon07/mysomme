@@ -178,12 +178,77 @@ function Inscription({ onDone, T }) {
     const agent = {
       nom: form.nom.trim(), telephone: form.telephone.trim(),
       reseau: form.reseau, pin: pinHash,
+      referral_code: form.telephone.trim(),
+      referred_by: refCode || null,
+      referral_count: 0,
+      trial_days: 14,
+      trial_extended: false,
+      subscription_status: "trial",
+      created_at: nowISO(), trial_start: nowISO()
+    };
+    const saved = await saveAgent(agent);
+    if (refCode) await crediterParrain(refCode);
+    const fresh = await fetchAgent(agent.telephone);
+    const trusted = fresh ? { ...fresh, pin: pinHash } : { ...(saved||agent), pin: pinHash };
+    lsSet("ms_agent", trusted);
+    setLoading(false);
+    onDone(trusted);
+  }
+
+  // ── CONNEXION ──
+  async function handleLogin() {
+    if (!form.telephone) { setError("Entre ton numéro"); return; }
+    setLoading(true); setError("");
+    const agent = await fetchAgent(form.telephone);
+    setLoading(false);
+    if (!agent) { setError("Numéro introuvable. Crée un compte."); return; }
+    lsSet("ms_agent", agent);
+    setStep(10);
+  }
+  async function handlePinLogin(p) {
+    if (loginBlocked) { setError("🔒 Trop de tentatives. Réessaie dans 5 minutes."); return; }
+    const agent = lsGet("ms_agent");
+    const pinHash = await hashPin(p);
+    if (pinHash === agent?.pin) {
+      onDone(agent); setLoginAttempts(0);
+    } else {
+      const n = loginAttempts + 1; setLoginAttempts(n);
+      if (n >= 3) {
+        setLoginBlocked(true);
+        setError("🔒 3 tentatives échouées — bloqué 5 minutes.");
+        setTimeout(()=>{ setLoginBlocked(false); setLoginAttempts(0); setError(""); }, 5*60*1000);
+      } else {
+        setError(`Code PIN incorrect. ${3-n} tentative${3-n>1?"s":""} restante${3-n>1?"s":""}.`);
+      }
+    }
+  }
+
+  if (step===2)  return <PinPad title="Crée ton PIN 🔐" subtitle="4 chiffres pour sécuriser ton compte" onSubmit={handlePinCreate} T={T} />;
+  if (step===3)  return <PinPad title="Confirme ton PIN" subtitle="Retape les mêmes 4 chiffres" onSubmit={handlePinConfirm} T={T} error={error} />;
+  if (step===10) return <PinPad title="Bon retour 👋" subtitle="Entre ton code PIN" onSubmit={handlePinLogin} T={T} error={error} />;
+
+  return (
+    <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", minHeight:"100vh", padding:w>=640?40:24, background:T.bg }}>
+      <div style={{ width:"100%", maxWidth:400 }}>
+        <div style={{ display:"flex", flexDirection:"column", alignItems:"center", marginBottom:30 }}>
+          <svg width="58" height="58" viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg" style={{marginBottom:14,filter:"drop-shadow(0 6px 26px #00C89640)"}}>
+            <rect x="4" y="4" width="44" height="44" rx="14" fill="url(#msgrad_ins)"/>
+            <path d="M12 36 L12 18 L26 29 L40 18 L40 36" stroke="white" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+            <circle cx="26" cy="40" r="3" fill="white" opacity="0.95"/>
+            <defs>
+              <linearGradient id="msgrad_ins" x1="0" y1="0" x2="52" y2="52" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stopColor="#00C896"/>
+                <stop offset="50%" stopColor="#00A5FF"/>
+                <stop offset="100%" stopColor="#7B2FBE"/>
+              </linearGradient>
+            </defs>
+          </svg>
+          <div style={{ fontWeight:900, fontSize:28, marginBottom:4, color:T.text }}>Mon Point</div>
           <div style={{ fontSize:13, color:T.sub, textAlign:"center" }}>
             {mode==="register" ? "Ton cahier MoMo numérique 🇧🇯" : "Reconnecte-toi à ton espace"}
           </div>
         </div>
 
-        {/* Toggle */}
         <div style={{ display:"flex", background:T.hero, borderRadius:13, padding:4, marginBottom:26, border:`1px solid ${T.border}` }}>
           {[["register","Nouveau compte"],["login","Se connecter"]].map(([m,label])=>(
             <button key={m} onClick={()=>{setMode(m);setStep(1);setError("");}}
@@ -193,7 +258,6 @@ function Inscription({ onDone, T }) {
           ))}
         </div>
 
-        {/* ═══ FORMULAIRE INSCRIPTION ═══ */}
         {mode==="register" && step===1 && (<>
           <div style={{ marginBottom:13 }}>
             <div style={{ fontSize:11, color:T.sub, marginBottom:7, fontWeight:700, letterSpacing:1 }}>TON NOM COMPLET</div>
@@ -220,14 +284,12 @@ function Inscription({ onDone, T }) {
           <div style={{ background:"#00C89612", border:"1px solid #00C89630", borderRadius:12, padding:"11px 16px", marginBottom:20, fontSize:12, color:"#00C896", textAlign:"center" }}>
             🎁 <strong>2 mois d'essai gratuit</strong> — aucune carte bancaire requise
           </div>
-
           <button onClick={handleRegisterStep1} disabled={loading}
             style={{ width:"100%", padding:17, borderRadius:14, background:"linear-gradient(135deg,#00C896,#00A5FF)", border:"none", color:"#fff", fontWeight:900, fontSize:16, cursor:loading?"not-allowed":"pointer", opacity:loading?0.7:1 }}>
             {loading?"⏳ Vérification...":"Créer mon compte →"}
           </button>
         </>)}
 
-        {/* ═══ FORMULAIRE CONNEXION ═══ */}
         {mode==="login" && step===1 && (<>
           <div style={{ marginBottom:22 }}>
             <div style={{ fontSize:11, color:T.sub, marginBottom:7, fontWeight:700, letterSpacing:1 }}>TON NUMÉRO DE TÉLÉPHONE</div>
