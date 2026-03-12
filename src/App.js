@@ -1009,7 +1009,7 @@ export default function MonPoint() {
     const floatLines = OPERATORS.map(op => {
       const actuel = calcFloatActuel(op);
       if (actuel === null) return null;
-      return `💼 Float ${op} : ${fF(actuel)}`;
+      return `💼 Solde ${op} : ${fF(actuel)}`;
     }).filter(Boolean).join("\n");
     const text = `📊 *Point du jour — Mon Point*\n📅 ${dateLabel}\n👤 Agent : ${agent.nom}\n\n⬇️ Dépôts : ${fF(sum(t=>t.type==="depot"))}\n⬆️ Retraits : ${fF(sum(t=>t.type==="retrait"))}\n\n💰 *CA Total : ${fF(totalCA)}*\n✅ *Commission : ${fF(totalCom)}*${floatLines?"\n\n"+floatLines:""}\n\n_Généré par Mon Point_`;
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
@@ -1035,7 +1035,8 @@ export default function MonPoint() {
     ["accueil","🏠","Accueil"],
     ["stats","📊","Statistiques"],
     ["historique","🗂️","Historique"],
-    ["profil","👤","Mon Profil"],
+    ["tarifs","📋","Tarifs"],
+    ["profil","👤","Profil"],
   ];
 
   const modalWrap = desktop
@@ -1239,13 +1240,86 @@ export default function MonPoint() {
 
           {/* ══ ACCUEIL ══ */}
           {tab==="accueil" && (<>
-            <div style={{ background:`linear-gradient(135deg,${T.hero},${T.card})`, borderRadius:18, padding:desktop?28:20, marginBottom:14, border:`1px solid ${T.border2}` }}>
-              <div style={{ fontSize:12, color:T.sub, marginBottom:4 }}>{isToday?"Chiffre d'affaires aujourd'hui":"Chiffre d'affaires"}</div>
-              <div style={{ fontSize:desktop?42:36, fontWeight:900, color:"#00C896", letterSpacing:-1.5 }}>{fF(totalCA)}</div>
-              <div style={{ display:"flex", gap:28, marginTop:14, flexWrap:"wrap" }}>
-                <div><div style={{ fontSize:11, color:T.sub }}>Opérations</div><div style={{ fontSize:20, fontWeight:800 }}>{txs.length}</div></div>
-                <div><div style={{ fontSize:11, color:T.sub }}>Commission</div><div style={{ fontSize:20, fontWeight:800, color:"#FFB800" }}>{fF(totalCom)}</div></div>
-                <div><div style={{ fontSize:11, color:T.sub }}>Agent</div><div style={{ fontSize:17, fontWeight:700, color:OP_COLORS[agent.reseau]||"#00C896" }}>{agent.nom.split(" ")[0]}</div></div>
+
+            {/* ══ CARTE SOLDE DE DÉPART ══ */}
+            <div style={{ background:T.card, borderRadius:16, padding:desktop?22:18, marginBottom:14, border:`1px solid #7B2FBE30` }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+                <div>
+                  <div style={{ fontWeight:800, fontSize:14 }}>💼 Solde de départ</div>
+                  <div style={{ fontSize:11, color:T.sub, marginTop:2 }}>Tes unités disponibles ce jour</div>
+                </div>
+                {isToday && (
+                  <button onClick={()=>{setFloatEditOp(null);setFloatInput("");setShowFloatModal(true);}}
+                    style={{ background:"#7B2FBE18", border:"1px solid #7B2FBE40", borderRadius:9, padding:"6px 14px", color:"#9B5FDE", fontSize:11, fontWeight:800, cursor:"pointer" }}>
+                    ✏️ Modifier
+                  </button>
+                )}
+              </div>
+
+              {OPERATORS.map((op, i) => {
+                const actuel = calcFloatActuel(op);
+                const depart = floats[op];
+                const color  = getFloatColor(actuel, depart);
+                const label  = getFloatLabel(actuel, depart);
+                const depots   = txs.filter(t=>t.operateur===op&&t.type==="depot")  .reduce((s,t)=>s+Number(t.montant),0);
+                const retraits = txs.filter(t=>t.operateur===op&&t.type==="retrait").reduce((s,t)=>s+Number(t.montant),0);
+                const pct = depart > 0 && actuel !== null ? Math.max(0, Math.min(100, (actuel / depart) * 100)) : 0;
+                return (
+                  <div key={op} style={{ marginBottom: i < 2 ? 14 : 0, paddingBottom: i < 2 ? 14 : 0, borderBottom: i < 2 ? `1px solid ${T.border}` : "none" }}>
+                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom: depart !== null ? 8 : 0 }}>
+                      <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                        <div style={{ width:34, height:34, background:OP_BG[op], border:`1px solid ${OP_COLORS[op]}40`, borderRadius:9, display:"flex", alignItems:"center", justifyContent:"center", fontSize:9, fontWeight:900, color:OP_COLORS[op], flexShrink:0 }}>{op}</div>
+                        <div>
+                          <div style={{ fontSize:13, fontWeight:700 }}>{op}</div>
+                          {depart !== null
+                            ? <div style={{ fontSize:10, color:T.sub }}>Départ : {fF(depart)}</div>
+                            : <div style={{ fontSize:10, color:T.faint }}>Non défini</div>}
+                        </div>
+                      </div>
+                      <div style={{ textAlign:"right" }}>
+                        {actuel !== null ? (
+                          <>
+                            <div style={{ fontSize:17, fontWeight:900, color }}>{fF(actuel)}</div>
+                            <div style={{ fontSize:10, fontWeight:700, color, marginTop:1 }}>{label}</div>
+                          </>
+                        ) : (
+                          <button onClick={()=>{setFloatEditOp(op);setFloatInput("");setShowFloatModal(true);}}
+                            style={{ background:"#7B2FBE18", border:"1px solid #7B2FBE40", borderRadius:8, padding:"6px 12px", color:"#9B5FDE", fontSize:11, fontWeight:800, cursor:"pointer" }}>
+                            + Définir
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    {depart !== null && actuel !== null && (
+                      <div style={{ marginBottom:6 }}>
+                        <div style={{ height:5, background:T.faint, borderRadius:3, overflow:"hidden" }}>
+                          <div style={{ height:"100%", width:`${pct}%`, background:color, borderRadius:3, transition:"width 0.4s ease" }} />
+                        </div>
+                      </div>
+                    )}
+                    {depart !== null && (depots > 0 || retraits > 0) && (
+                      <div style={{ display:"flex", gap:6, marginTop:4 }}>
+                        {depots > 0 && <div style={{ flex:1, background:"#E6394610", border:"1px solid #E6394620", borderRadius:7, padding:"4px 8px", fontSize:10 }}><span style={{ color:T.sub }}>⬇️ </span><span style={{ color:"#E63946", fontWeight:700 }}>-{fF(depots)}</span></div>}
+                        {retraits > 0 && <div style={{ flex:1, background:"#00C89610", border:"1px solid #00C89620", borderRadius:7, padding:"4px 8px", fontSize:10 }}><span style={{ color:T.sub }}>⬆️ </span><span style={{ color:"#00C896", fontWeight:700 }}>+{fF(retraits)}</span></div>}
+                      </div>
+                    )}
+                    {actuel !== null && actuel < 5000 && actuel >= 0 && (
+                      <div style={{ marginTop:6, background:"#E6394612", border:"1px solid #E6394635", borderRadius:7, padding:"5px 10px", fontSize:10, color:"#E63946", fontWeight:700 }}>⚠️ Solde {op} bas — recharge tes unités !</div>
+                    )}
+                    {actuel !== null && actuel < 0 && (
+                      <div style={{ marginTop:6, background:"#E6394620", border:"1px solid #E6394650", borderRadius:7, padding:"5px 10px", fontSize:10, color:"#E63946", fontWeight:800 }}>🚨 Solde {op} dépassé de {fF(Math.abs(actuel))} !</div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* ══ RÉSUMÉ DU JOUR ══ */}
+            <div style={{ background:`linear-gradient(135deg,${T.hero},${T.card})`, borderRadius:18, padding:desktop?22:16, marginBottom:14, border:`1px solid ${T.border2}` }}>
+              <div style={{ display:"flex", gap:desktop?28:18, flexWrap:"wrap" }}>
+                <div><div style={{ fontSize:11, color:T.sub }}>Opérations</div><div style={{ fontSize:22, fontWeight:800 }}>{txs.length}</div></div>
+                <div><div style={{ fontSize:11, color:T.sub }}>Commission</div><div style={{ fontSize:22, fontWeight:800, color:"#FFB800" }}>{fF(totalCom)}</div></div>
+                <div><div style={{ fontSize:11, color:T.sub }}>Agent</div><div style={{ fontSize:18, fontWeight:700, color:OP_COLORS[agent.reseau]||"#00C896" }}>{agent.nom.split(" ")[0]}</div></div>
               </div>
             </div>
 
@@ -1284,98 +1358,6 @@ export default function MonPoint() {
             <button onClick={shareReport} style={{ width:"100%", padding:16, borderRadius:16, background:"linear-gradient(135deg,#25D366,#128C7E)", border:"none", color:"#fff", fontWeight:800, fontSize:14, cursor:"pointer", marginBottom:14, display:"flex", alignItems:"center", justifyContent:"center", gap:10 }}>
               <span style={{ fontSize:20 }}>📤</span> Envoyer le point du jour sur WhatsApp
             </button>
-
-            {/* ══ CARTE FLOAT / UNITÉS ══ */}
-            <div style={{ background:T.card, borderRadius:16, padding:desktop?22:18, marginBottom:14, border:`1px solid #7B2FBE30` }}>
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
-                <div style={{ fontWeight:800, fontSize:14 }}>💼 Mes Unités (Float)</div>
-                {isToday && (
-                  <button onClick={()=>{setFloatEditOp(null);setFloatInput("");setShowFloatModal(true);}}
-                    style={{ background:"#7B2FBE18", border:"1px solid #7B2FBE40", borderRadius:9, padding:"5px 12px", color:"#9B5FDE", fontSize:11, fontWeight:800, cursor:"pointer" }}>
-                    ✏️ Modifier
-                  </button>
-                )}
-              </div>
-
-              {OPERATORS.map((op, i) => {
-                const actuel = calcFloatActuel(op);
-                const depart = floats[op];
-                const color  = getFloatColor(actuel, depart);
-                const label  = getFloatLabel(actuel, depart);
-                const depots   = txs.filter(t=>t.operateur===op&&t.type==="depot")  .reduce((s,t)=>s+Number(t.montant),0);
-                const retraits = txs.filter(t=>t.operateur===op&&t.type==="retrait").reduce((s,t)=>s+Number(t.montant),0);
-                const pct = depart > 0 && actuel !== null ? Math.max(0, Math.min(100, (actuel / depart) * 100)) : 0;
-
-                return (
-                  <div key={op} style={{ marginBottom: i < 2 ? 14 : 0, paddingBottom: i < 2 ? 14 : 0, borderBottom: i < 2 ? `1px solid ${T.border}` : "none" }}>
-                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8 }}>
-                      <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                        <div style={{ width:34, height:34, background:OP_BG[op], border:`1px solid ${OP_COLORS[op]}40`, borderRadius:9, display:"flex", alignItems:"center", justifyContent:"center", fontSize:9, fontWeight:900, color:OP_COLORS[op], flexShrink:0 }}>{op}</div>
-                        <div>
-                          <div style={{ fontSize:13, fontWeight:700 }}>{op}</div>
-                          {depart !== null
-                            ? <div style={{ fontSize:10, color:T.sub }}>Départ : {fF(depart)}</div>
-                            : <div style={{ fontSize:10, color:T.faint }}>Non défini</div>
-                          }
-                        </div>
-                      </div>
-                      <div style={{ textAlign:"right" }}>
-                        {actuel !== null ? (
-                          <>
-                            <div style={{ fontSize:18, fontWeight:900, color }}>{fF(actuel)}</div>
-                            <div style={{ fontSize:10, fontWeight:700, color, marginTop:1 }}>{label}</div>
-                          </>
-                        ) : (
-                          <button onClick={()=>{setFloatEditOp(op);setFloatInput("");setShowFloatModal(true);}}
-                            style={{ background:"#7B2FBE18", border:"1px solid #7B2FBE40", borderRadius:8, padding:"6px 12px", color:"#9B5FDE", fontSize:11, fontWeight:800, cursor:"pointer" }}>
-                            + Définir
-                          </button>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Barre de progression du float */}
-                    {depart !== null && actuel !== null && (
-                      <div style={{ marginBottom:6 }}>
-                        <div style={{ height:6, background:T.faint, borderRadius:3, overflow:"hidden" }}>
-                          <div style={{ height:"100%", width:`${pct}%`, background:color, borderRadius:3, transition:"width 0.4s ease" }} />
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Effet des transactions */}
-                    {depart !== null && (depots > 0 || retraits > 0) && (
-                      <div style={{ display:"flex", gap:8, marginTop:6 }}>
-                        {depots > 0 && (
-                          <div style={{ flex:1, background:"#00C89610", border:"1px solid #00C89625", borderRadius:8, padding:"5px 10px", fontSize:10 }}>
-                            <span style={{ color:T.sub }}>⬇️ Dépôts : </span>
-                            <span style={{ color:"#E63946", fontWeight:700 }}>-{fF(depots)}</span>
-                          </div>
-                        )}
-                        {retraits > 0 && (
-                          <div style={{ flex:1, background:"#4F8EF710", border:"1px solid #4F8EF725", borderRadius:8, padding:"5px 10px", fontSize:10 }}>
-                            <span style={{ color:T.sub }}>⬆️ Retraits : </span>
-                            <span style={{ color:"#00C896", fontWeight:700 }}>+{fF(retraits)}</span>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Alerte critique */}
-                    {actuel !== null && actuel < 5000 && actuel >= 0 && (
-                      <div style={{ marginTop:8, background:"#E6394612", border:"1px solid #E6394635", borderRadius:8, padding:"6px 12px", fontSize:11, color:"#E63946", fontWeight:700 }}>
-                        ⚠️ Float {op} bas — recharge tes unités !
-                      </div>
-                    )}
-                    {actuel !== null && actuel < 0 && (
-                      <div style={{ marginTop:8, background:"#E6394620", border:"1px solid #E6394650", borderRadius:8, padding:"6px 12px", fontSize:11, color:"#E63946", fontWeight:800 }}>
-                        🚨 Float {op} dépassé de {fF(Math.abs(actuel))} !
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
 
             <div style={{ background:T.card, borderRadius:16, padding:desktop?22:18, border:`1px solid ${T.border}` }}>
               <div style={{ fontWeight:800, fontSize:14, marginBottom:16 }}>Dernières opérations</div>
@@ -1464,6 +1446,131 @@ export default function MonPoint() {
               </div>
             </div>
           )}
+
+          {/* ══ TARIFS ══ */}
+          {tab==="tarifs" && (() => {
+            const MTN_INTERNET_VOL = [
+              {vol:"70 Mo",prix:100},{vol:"250 Mo",prix:300},{vol:"450 Mo",prix:500},
+              {vol:"850 Mo",prix:1000},{vol:"1,7 Go",prix:2000},{vol:"3 Go",prix:3500},{vol:"5,7 Go",prix:6000},
+            ];
+            const MTN_INTERNET_ILL = [
+              {vol:"20 Go+",prix:15100},{vol:"40 Go+",prix:20000},{vol:"80 Go+",prix:25000},
+              {vol:"100 Go+",prix:30000},{vol:"175 Go+",prix:50000},{vol:"290 Go+",prix:75000},{vol:"400 Go+",prix:100000},
+            ];
+            const MTN_APPEL = [
+              {label:"100 F / 24h",prix:100},{label:"150 F / 24h",prix:150},{label:"200 F / 24h",prix:200},
+              {label:"300 F / 24h",prix:300},{label:"500 F / 24h",prix:500},{label:"1 000 F / 7j",prix:1000},
+              {label:"1 500 F / 7j",prix:1500},{label:"2 500 F / 30j",prix:2500},{label:"5 000 F / 30j",prix:5000},
+            ];
+            const MOOV_INTERNET_ILL = [
+              {vol:"40 Go",prix:15500},{vol:"60 Go",prix:20000},{vol:"500 Go",prix:50000},
+            ];
+            const MOOV_INTERNET_VOL = [
+              {vol:"150 Mo",prix:200},{vol:"400 Mo",prix:500},{vol:"1 Go",prix:1000},
+              {vol:"2 Go",prix:2000},{vol:"5 Go",prix:4500},{vol:"10 Go",prix:8000},{vol:"20 Go",prix:15000},
+            ];
+            const MOOV_APPEL = [
+              {label:"100 F / 24h",prix:100},{label:"200 F / 24h",prix:200},{label:"500 F / 7j",prix:500},
+              {label:"1 000 F / 30j",prix:1000},{label:"2 500 F / 30j",prix:2500},{label:"5 000 F / 30j",prix:5000},
+            ];
+            const CELTIIS_INTERNET = [
+              {vol:"1,4 Go / 7j",prix:1000},{vol:"4,2 Go / 30j",prix:3000},
+              {vol:"10 Go / 30j",prix:5000},{vol:"25 Go / 30j",prix:10000},
+            ];
+            const CELTIIS_ILLIMINET = [
+              {vol:"50 Go+ / 30j",prix:10000},{vol:"100 Go+ / 30j",prix:20000},
+            ];
+            const CELTIIS_APPEL = [
+              {label:"100 F",prix:100},{label:"150 F",prix:150},{label:"200 F",prix:200},
+              {label:"500 F = 8 min",prix:500},{label:"1 500 F = 125 min",prix:1500},
+              {label:"3 000 F = 250 min",prix:3000},{label:"5 000 F = 417 min",prix:5000},
+              {label:"10 000 F = 833 min",prix:10000},
+            ];
+
+            const PriceRow = ({label, prix, color}) => (
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 0", borderBottom:`1px solid ${T.border}` }}>
+                <span style={{ fontSize:13, color:T.text }}>{label}</span>
+                <span style={{ fontSize:13, fontWeight:800, color:color||T.text }}>{fF(prix)}</span>
+              </div>
+            );
+
+            const Section = ({title, color, children}) => (
+              <div style={{ background:T.card, borderRadius:14, padding:16, marginBottom:12, border:`1px solid ${color}22` }}>
+                <div style={{ fontSize:11, color, fontWeight:800, letterSpacing:1, marginBottom:10 }}>{title}</div>
+                {children}
+              </div>
+            );
+
+            return (
+              <div>
+                <div style={{ fontWeight:900, fontSize:desktop?20:18, marginBottom:20 }}>📋 Tarifs & Forfaits</div>
+
+                {/* ── MTN ── */}
+                <div style={{ background:`${OP_COLORS.MTN}15`, border:`2px solid ${OP_COLORS.MTN}40`, borderRadius:16, padding:16, marginBottom:16 }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:14 }}>
+                    <div style={{ width:36, height:36, background:OP_BG_D.MTN, border:`2px solid ${OP_COLORS.MTN}`, borderRadius:10, display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:900, color:OP_COLORS.MTN }}>MTN</div>
+                    <div style={{ fontWeight:900, fontSize:16, color:OP_COLORS.MTN }}>MTN Bénin</div>
+                  </div>
+                  <Section title="🌐 INTERNET — VOLUME (code: *123*77*montant#)" color={OP_COLORS.MTN}>
+                    {MTN_INTERNET_VOL.map(r=><PriceRow key={r.prix} label={r.vol} prix={r.prix} color={OP_COLORS.MTN}/>)}
+                  </Section>
+                  <Section title="🌐 INTERNET — ILLIMITÉ (vitesse réduite après quota)" color={OP_COLORS.MTN}>
+                    {MTN_INTERNET_ILL.map(r=><PriceRow key={r.prix} label={r.vol} prix={r.prix} color={OP_COLORS.MTN}/>)}
+                  </Section>
+                  <Section title="📞 FORFAITS APPEL — Forfait Maxi (code: *173#)" color={OP_COLORS.MTN}>
+                    {MTN_APPEL.map(r=><PriceRow key={r.prix} label={r.label} prix={r.prix} color={OP_COLORS.MTN}/>)}
+                  </Section>
+                  <div style={{ background:`${OP_COLORS.MTN}10`, borderRadius:10, padding:"10px 14px", fontSize:12, color:T.sub }}>
+                    💳 <strong style={{color:OP_COLORS.MTN}}>Crédit simple :</strong> à partir de <strong>100 F</strong> en tout point de vente
+                  </div>
+                </div>
+
+                {/* ── MOOV ── */}
+                <div style={{ background:`${OP_COLORS.MOOV}15`, border:`2px solid ${OP_COLORS.MOOV}40`, borderRadius:16, padding:16, marginBottom:16 }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:14 }}>
+                    <div style={{ width:36, height:36, background:OP_BG_D.MOOV, border:`2px solid ${OP_COLORS.MOOV}`, borderRadius:10, display:"flex", alignItems:"center", justifyContent:"center", fontSize:9, fontWeight:900, color:OP_COLORS.MOOV }}>MOOV</div>
+                    <div style={{ fontWeight:900, fontSize:16, color:OP_COLORS.MOOV }}>Moov Africa Bénin</div>
+                  </div>
+                  <Section title="🌐 INTERNET — VOLUME (code: *123*5#)" color={OP_COLORS.MOOV}>
+                    {MOOV_INTERNET_VOL.map(r=><PriceRow key={r.prix} label={r.vol} prix={r.prix} color={OP_COLORS.MOOV}/>)}
+                  </Section>
+                  <Section title="🌐 INTERNET — ILLIMITÉ" color={OP_COLORS.MOOV}>
+                    {MOOV_INTERNET_ILL.map(r=><PriceRow key={r.prix} label={r.vol} prix={r.prix} color={OP_COLORS.MOOV}/>)}
+                  </Section>
+                  <Section title="📞 FORFAITS APPEL (code: *855*3*2#)" color={OP_COLORS.MOOV}>
+                    {MOOV_APPEL.map(r=><PriceRow key={r.prix} label={r.label} prix={r.prix} color={OP_COLORS.MOOV}/>)}
+                  </Section>
+                  <div style={{ background:`${OP_COLORS.MOOV}10`, borderRadius:10, padding:"10px 14px", fontSize:12, color:T.sub }}>
+                    💳 <strong style={{color:OP_COLORS.MOOV}}>Crédit simple :</strong> via <strong>*855#</strong> → option 3 · à partir de <strong>100 F</strong>
+                  </div>
+                </div>
+
+                {/* ── CELTIIS ── */}
+                <div style={{ background:`${OP_COLORS.Celtiis}15`, border:`2px solid ${OP_COLORS.Celtiis}40`, borderRadius:16, padding:16, marginBottom:16 }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:14 }}>
+                    <div style={{ width:36, height:36, background:OP_BG_D.Celtiis, border:`2px solid ${OP_COLORS.Celtiis}`, borderRadius:10, display:"flex", alignItems:"center", justifyContent:"center", fontSize:8, fontWeight:900, color:OP_COLORS.Celtiis }}>CELT</div>
+                    <div style={{ fontWeight:900, fontSize:16, color:OP_COLORS.Celtiis }}>Celtiis Bénin</div>
+                  </div>
+                  <Section title="🌐 INTERNET — Forfait Connect (code: *199*2#)" color={OP_COLORS.Celtiis}>
+                    {CELTIIS_INTERNET.map(r=><PriceRow key={r.prix} label={r.vol} prix={r.prix} color={OP_COLORS.Celtiis}/>)}
+                  </Section>
+                  <Section title="🌐 INTERNET — IllimiNet + appels/SMS illimités (code: *199*8#)" color={OP_COLORS.Celtiis}>
+                    {CELTIIS_ILLIMINET.map(r=><PriceRow key={r.prix} label={r.vol} prix={r.prix} color={OP_COLORS.Celtiis}/>)}
+                  </Section>
+                  <Section title="📞 FORFAITS APPEL — Top Appel (code: *199*1*2#) — 1F/sec tous réseaux" color={OP_COLORS.Celtiis}>
+                    {CELTIIS_APPEL.map(r=><PriceRow key={r.prix} label={r.label} prix={r.prix} color={OP_COLORS.Celtiis}/>)}
+                  </Section>
+                  <div style={{ background:`${OP_COLORS.Celtiis}10`, borderRadius:10, padding:"10px 14px", fontSize:12, color:T.sub }}>
+                    💳 <strong style={{color:OP_COLORS.Celtiis}}>Crédit simple :</strong> à partir de <strong>200 F</strong> · SMS : <strong>5 F</strong> tous réseaux
+                  </div>
+                </div>
+
+                <div style={{ background:T.hero, borderRadius:12, padding:"12px 16px", fontSize:11, color:T.sub, textAlign:"center" }}>
+                  ℹ️ Tarifs indicatifs — peuvent varier selon les promotions opérateurs
+                </div>
+              </div>
+            );
+          })()}
 
           {/* ══ PROFIL ══ */}
           {tab==="profil" && (
@@ -1806,7 +1913,7 @@ export default function MonPoint() {
                 <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:18 }}>
                   <button onClick={()=>{ setFloatEditOp(null); setFloatInput(""); }}
                     style={{ background:T.hero, border:`1px solid ${T.border}`, borderRadius:9, padding:"7px 12px", color:T.sub, fontSize:12, cursor:"pointer" }}>← Retour</button>
-                  <div style={{ fontWeight:800, fontSize:15, color:OP_COLORS[floatEditOp] }}>Float {floatEditOp}</div>
+                  <div style={{ fontWeight:800, fontSize:15, color:OP_COLORS[floatEditOp] }}>Solde de départ {floatEditOp}</div>
                 </div>
 
                 <div style={{ background:`${OP_COLORS[floatEditOp]}12`, border:`1px solid ${OP_COLORS[floatEditOp]}30`, borderRadius:12, padding:"12px 16px", marginBottom:16, fontSize:12, color:T.sub }}>
