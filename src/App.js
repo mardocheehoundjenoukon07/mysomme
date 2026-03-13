@@ -503,6 +503,8 @@ export default function MonPoint() {
   const [floats,        setFloats]        = useState({ MTN:null, MOOV:null, Celtiis:null });
   const [capitalCash,   setCapitalCash]   = useState(null);
   const [showCashModal, setShowCashModal] = useState(false);
+  const [showMorningModal, setShowMorningModal] = useState(false);
+  const [morningInputs, setMorningInputs] = useState({ cash:"", MTN:"", MOOV:"", Celtiis:"" });
   const [cashInput,     setCashInput]     = useState("");
   const [showFloatModal,setShowFloatModal]= useState(false);
   const [floatEditOp,   setFloatEditOp]  = useState(null);
@@ -720,6 +722,15 @@ export default function MonPoint() {
 
   useEffect(() => { if (agent && !locked) loadTxs(selectedDate); }, [selectedDate, agent, locked]);
   useEffect(() => { if (agent && !locked) loadFloats(selectedDate); }, [selectedDate, agent, locked]);
+  // Déclencher modal matin si aujourd'hui et rien de défini
+  useEffect(() => {
+    if (!agent || locked || !isToday) return;
+    const storedFloat = lsGet(floatKey(todayStr(), agent.telephone));
+    const storedCash  = lsGet(cashKey(todayStr(), agent.telephone));
+    const noFloat = !storedFloat || Object.values(storedFloat).every(v => v === null);
+    const noCash  = storedCash === null || storedCash === undefined;
+    if (noFloat && noCash) setShowMorningModal(true);
+  }, [agent, locked]);
   useEffect(() => { if (agent && !locked) fetchActiveDays(calYear, calMonth, agent.telephone).then(setActiveDays); }, [calMonth, calYear, agent, locked]);
 
   const sum      = f => txs.filter(f).reduce((s,t) => s+Number(t.montant),    0);
@@ -1270,6 +1281,80 @@ _Mon Point_`;
       )}
 
       {/* ══ MODAL CAPITAL CASH ══ */}
+      {/* ══ MODAL MATIN — SAISIE DE DÉPART ══ */}
+      {showMorningModal && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.92)", zIndex:10000, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+          <div style={{ background:dark?"#13162A":"#fff", borderRadius:22, padding:24, maxWidth:400, width:"100%", maxHeight:"92vh", overflowY:"auto" }}>
+
+            {/* Header */}
+            <div style={{ textAlign:"center", marginBottom:22 }}>
+              <div style={{ fontSize:32, marginBottom:8 }}>🌅</div>
+              <div style={{ fontWeight:900, fontSize:20, color:dark?"#fff":"#111" }}>Bonne journée, {agent.nom.split(" ")[0]} !</div>
+              <div style={{ fontSize:13, color:dark?"#8A8FA8":"#666", marginTop:6 }}>Entre tes fonds de départ pour commencer</div>
+            </div>
+
+            {/* Espèces cash */}
+            <div style={{ marginBottom:18 }}>
+              <div style={{ fontSize:11, fontWeight:800, letterSpacing:1, color:"#00C896", marginBottom:8 }}>💵 ESPÈCES EN LIQUIDE (commun 3 réseaux)</div>
+              <div style={{ fontSize:11, color:dark?"#8A8FA8":"#888", marginBottom:8 }}>L'argent cash total que tu as en main ce matin</div>
+              <input
+                type="number" inputMode="numeric" placeholder="Ex: 300000"
+                value={morningInputs.cash}
+                onChange={e=>setMorningInputs(p=>({...p, cash:e.target.value}))}
+                style={{ width:"100%", background:dark?"#1A1D2E":"#f5f5f5", border:"2px solid #00C89650", borderRadius:12, padding:"14px 16px", color:dark?"#fff":"#111", fontSize:16, fontWeight:700, outline:"none", boxSizing:"border-box" }}
+              />
+            </div>
+
+            {/* Séparateur */}
+            <div style={{ borderTop:`1px solid ${dark?"#2A2D3E":"#eee"}`, marginBottom:18, paddingTop:18 }}>
+              <div style={{ fontSize:11, fontWeight:800, letterSpacing:1, color:"#9B5FDE", marginBottom:4 }}>📱 SOLDES ÉLECTRONIQUES MOMO</div>
+              <div style={{ fontSize:11, color:dark?"#8A8FA8":"#888", marginBottom:14 }}>Le solde disponible sur chaque compte au départ</div>
+
+              {[["MTN","#FFB800"],["MOOV","#00A5FF"],["Celtiis","#E63946"]].map(([op, color])=>(
+                <div key={op} style={{ marginBottom:12 }}>
+                  <div style={{ fontSize:12, fontWeight:800, color, marginBottom:6 }}>{op}</div>
+                  <input
+                    type="number" inputMode="numeric" placeholder={`Solde ${op} du matin`}
+                    value={morningInputs[op]}
+                    onChange={e=>setMorningInputs(p=>({...p, [op]:e.target.value}))}
+                    style={{ width:"100%", background:dark?"#1A1D2E":"#f5f5f5", border:`2px solid ${color}50`, borderRadius:12, padding:"13px 16px", color:dark?"#fff":"#111", fontSize:15, fontWeight:700, outline:"none", boxSizing:"border-box" }}
+                  />
+                </div>
+              ))}
+            </div>
+
+            {/* Bouton valider */}
+            <button onClick={()=>{
+              // Sauvegarder cash
+              const cashVal = Number(morningInputs.cash);
+              if (!isNaN(cashVal) && morningInputs.cash !== "") {
+                lsSet(cashKey(todayStr(), agent.telephone), cashVal);
+                setCapitalCash(cashVal);
+              }
+              // Sauvegarder floats
+              const newFloats = { MTN:null, MOOV:null, Celtiis:null };
+              ["MTN","MOOV","Celtiis"].forEach(op => {
+                const v = Number(morningInputs[op]);
+                if (!isNaN(v) && morningInputs[op] !== "") newFloats[op] = v;
+              });
+              setFloats(newFloats);
+              lsSet(floatKey(todayStr(), agent.telephone), newFloats);
+              setShowMorningModal(false);
+            }}
+              style={{ width:"100%", padding:16, borderRadius:14, background:"linear-gradient(135deg,#00C896,#00A5FF)", border:"none", color:"#fff", fontWeight:900, fontSize:16, cursor:"pointer", marginBottom:10 }}>
+              ✅ Commencer la journée
+            </button>
+
+            {/* Passer */}
+            <button onClick={()=>setShowMorningModal(false)}
+              style={{ width:"100%", padding:12, borderRadius:12, background:"transparent", border:`1px solid ${dark?"#2A2D3E":"#ddd"}`, color:dark?"#8A8FA8":"#999", fontSize:13, cursor:"pointer" }}>
+              Passer — je remplirai plus tard
+            </button>
+
+          </div>
+        </div>
+      )}
+
       {showCashModal && (
         <div style={{ position:"fixed", inset:0, background:"#000D", display:"flex", alignItems:desktop?"center":"flex-end", justifyContent:desktop?"center":"stretch", zIndex:600 }}
           onClick={()=>setShowCashModal(false)}>
