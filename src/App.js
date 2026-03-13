@@ -21,8 +21,8 @@ function lsDel(k)    { try { localStorage.removeItem(k); } catch {} }
 
 const txKey    = (date, uid) => `ms_txs_${uid}_${date}`;
 const pendKey  = uid          => `ms_pend_${uid}`;
-const floatKey  = (date, uid) => `ms_float_${uid}_${date}`;
-const cashKey   = (date, uid) => `ms_cash_${uid}_${date}`;
+const floatKey = (date, uid) => `ms_float_${uid}_${date}`;
+const cashKey  = (date, uid) => `ms_cash_${uid}_${date}`;
 
 // ─── DATE LOCALE BÉNIN (UTC+1) ───────────────────────────────────────────────
 function todayStr() {
@@ -109,47 +109,162 @@ async function flushPending(userId) {
   if (synced.length > 0) lsSet(pendKey(userId), pending.filter(t => !synced.includes(t.localId)));
   return synced;
 }
-// ─── CONSTANTES APP ──────────────────────────────────────────────────────────
-const OPERATORS   = ["MTN","MOOV","Celtiis"];
-const OP_COLORS   = { MTN:"#FFB800", MOOV:"#0066CC", Celtiis:"#E63946" };
-const OP_BG       = { MTN:"#FFB80018", MOOV:"#0066CC18", Celtiis:"#E6394618" };
-const OP_BG_D     = { MTN:"#FFB80028", MOOV:"#0066CC28", Celtiis:"#E6394628" };
-const NAV_ITEMS   = [["accueil","🏠","Accueil"],["stats","📊","Statistiques"],["historique","🗂️","Historique"]];
-const TYPE_COLOR  = { depot:"#00C896", retrait:"#4F8EF7" };
-const TYPE_ICON   = { depot:"⬇️", retrait:"⬆️" };
-const TYPE_LABEL  = { depot:"Dépôt", retrait:"Retrait" };
-const fF = n => Number(n||0).toLocaleString("fr-FR")+" F";
+
+
+// ─── PARRAINAGE ───────────────────────────────────────────────────────────────
+function getReferralLink(telephone) {
+  return `https://monpoint.site?ref=${telephone}`;
+}
+function getRefFromURL() {
+  try { return new URLSearchParams(window.location.search).get("ref") || null; }
+  catch { return null; }
+}
+async function crediterParrain(telephoneParrain) {
+  // Récupérer le parrain
+  const parrain = await fetchAgent(telephoneParrain);
+  if (!parrain) return;
+  // Si parrain déjà étendu à 30j → ne pas re-créditer
+  if (parrain.trial_extended) return;
+  // Ajouter 16 jours et marquer comme étendu
+  await updateAgent(telephoneParrain, {
+    trial_days: (parrain.trial_days || 14) + 16,
+    trial_extended: true,
+    referral_count: (parrain.referral_count || 0) + 1
+  });
+}
+
+// ─── TRIAL & ABONNEMENT ───────────────────────────────────────────────────────
+function getTrialInfo(agent) {
+  if (!agent) return { status:"expired", daysLeft:0 };
+  const now = new Date();
+
+  // Abonnement actif payant ?
+  if (agent.subscription_status === "active" && agent.subscription_expires_at) {
+    const exp = new Date(agent.subscription_expires_at);
+    if (exp > now) {
+      return { status:"subscribed", daysLeft: Math.ceil((exp-now)/(1000*60*60*24)) };
+    }
+  }
+
+  // Période d'essai — limiter trial_days à 30 max pour éviter la triche
+  const start     = new Date(agent.trial_start || agent.created_at);
+  const rawDays   = Number(agent.trial_days) || 14;
+  const totalDays = Math.min(rawDays, 30); // MAX 30 jours — impossible de tricher
+  const elapsed   = Math.floor((now - start) / (1000*60*60*24));
+  const daysLeft  = totalDays - elapsed;
+
+  if (daysLeft > 0) return { status:"trial", daysLeft };
+  return { status:"expired", daysLeft:0 };
+}
+
+async function activerAbonnement(telephone, fedapayId) {
+  const exp = new Date();
+  exp.setDate(exp.getDate() + 30);
+  await updateAgent(telephone, {
+    subscription_status: "active",
+    subscription_expires_at: exp.toISOString()
+  });
+  // Sauvegarder dans la table abonnements
+  try {
+    await fetch(`${SUPA_URL}/rest/v1/abonnements`, {
+      method:"POST", headers:HA(telephone),
+      body:JSON.stringify({ agent_telephone:telephone, montant:1999, fedapay_id:fedapayId, statut:"paid", expire_at:exp.toISOString() })
+    });
+  } catch {}
+}
+
+// ─── GRILLE TARIFAIRE RETRAIT ─────────────────────────────────────────────────
+const GRILLE_RETRAIT = [
+  { min:100,     max:500,     MTN:50,   MOOV:50,   Celtiis:25   },
+  { min:501,     max:5000,    MTN:125,  MOOV:125,  Celtiis:75   },
+  { min:5001,    max:10000,   MTN:225,  MOOV:225,  Celtiis:150  },
+  { min:10001,   max:20000,   MTN:375,  MOOV:375,  Celtiis:250  },
+  { min:20001,   max:50000,   MTN:700,  MOOV:700,  Celtiis:500  },
+  { min:50001,   max:75000,   MTN:1000, MOOV:1000, Celtiis:750  },
+  { min:75001,   max:100000,  MTN:1000, MOOV:1000, Celtiis:1000 },
+  { min:100001,  max:200000,  MTN:2000, MOOV:2000, Celtiis:2000 },
+  { min:200001,  max:300000,  MTN:3000, MOOV:3000, Celtiis:3000 },
+  { min:300001,  max:500000,  MTN:3500, MOOV:3500, Celtiis:4000 },
+  { min:500001,  max:750000,  MTN:5000, MOOV:5000, Celtiis:5000 },
+  { min:750001,  max:1000000, MTN:6000, MOOV:6000, Celtiis:5000 },
+  { min:1000001, max:1500000, MTN:8000, MOOV:8000, Celtiis:5000 },
+  { min:1500001, max:2000000, MTN:9900, MOOV:9900, Celtiis:5000 },
+];
+function calcComRetrait(op, montant) {
+  const mt = Number(montant)||0;
+  const t  = GRILLE_RETRAIT.find(t => mt>=t.min && mt<=t.max);
+  return t ? (t[op]||0) : 0;
+}
+function calcCom(type, op, montant) { return type==="retrait" ? calcComRetrait(op,montant) : 0; }
+function getTranche(montant) { const mt=Number(montant)||0; return GRILLE_RETRAIT.find(t=>mt>=t.min&&mt<=t.max)||null; }
+
+// ─── CONSTANTES ───────────────────────────────────────────────────────────────
+const OPERATORS  = ["MTN","MOOV","Celtiis"];
+const OP_COLORS  = { MTN:"#FFB800", MOOV:"#0066CC", Celtiis:"#E63946" };
+const OP_BG_D    = { MTN:"#FFB80018", MOOV:"#0066CC18", Celtiis:"#E6394618" };
+const OP_BG_L    = { MTN:"#FFB80028", MOOV:"#0066CC20", Celtiis:"#E6394620" };
+const TYPE_COLOR = { depot:"#00C896", retrait:"#4F8EF7", forfait:"#9B5FDE" };
+const TYPE_ICON  = { depot:"⬇️", retrait:"⬆️", forfait:"📦" };
+const TYPE_LABEL = { depot:"Dépôt", retrait:"Retrait", forfait:"Forfait" };
+const JOURS      = ["Dim","Lun","Mar","Mer","Jeu","Ven","Sam"];
+const MOIS_FR    = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
+const fF = n => Number(n||0).toLocaleString("fr-FR") + " F";
+
 function getSalutation(nom) {
   const h = new Date().getHours();
-  const p = nom.split(" ")[0];
-  if(h<12) return `Bonjour, ${p} 👋`;
-  if(h<18) return `Bon après-midi, ${p} 👋`;
-  return `Bonsoir, ${p} 👋`;
+  const g = h>=5&&h<12?"Bonjour":h>=12&&h<18?"Bon après-midi":"Bonsoir";
+  return `${g}, ${(nom||"").split(" ")[0]} 👋`;
 }
+
+// ─── THÈMES ───────────────────────────────────────────────────────────────────
+const DARK  = { bg:"#080A11", card:"#0F1118", border:"#1C1F2E", border2:"#22263A", text:"#E8EAF0", sub:"#4A5060", faint:"#2E3140", hero:"#151826", input:"#080A11", nav:"#0F1118", sidebar:"#0C0E17" };
+const LIGHT = { bg:"#F0F2F8", card:"#FFFFFF",  border:"#DDE1EE", border2:"#CDD2E4", text:"#1A1D2E", sub:"#6B7080", faint:"#C0C5D5", hero:"#E4E8F5", input:"#F8F9FC", nav:"#FFFFFF", sidebar:"#EAECF5" };
+
+// ─── HOOK RESPONSIVE ─────────────────────────────────────────────────────────
 function useWindowWidth() {
-  const [w, setW] = React.useState(window.innerWidth);
-  React.useEffect(()=>{
-    const fn = ()=>setW(window.innerWidth);
-    window.addEventListener("resize",fn);
-    return ()=>window.removeEventListener("resize",fn);
-  },[]);
+  const [w, setW] = useState(typeof window!=="undefined"?window.innerWidth:375);
+  useEffect(() => {
+    const style = document.createElement("style");
+    style.id = "ms-reset";
+    style.textContent = `
+      *,*::before,*::after{box-sizing:border-box!important;margin:0;padding:0;}
+      html,body{margin:0!important;padding:0!important;width:100%!important;max-width:100%!important;overflow-x:hidden!important;background:#080A11!important;}
+      #root,[id^="react"],body>div{margin:0!important;padding:0!important;width:100%!important;max-width:100%!important;}
+      button{-webkit-tap-highlight-color:transparent;outline:none;}
+      input{-webkit-appearance:none;outline:none;}
+    `;
+    if (!document.getElementById("ms-reset")) document.head.appendChild(style);
+    const h = () => setW(window.innerWidth);
+    window.addEventListener("resize", h);
+    return () => window.removeEventListener("resize", h);
+  }, []);
   return w;
 }
 
-
-
-
-function PinPad({ title, subtitle, onSubmit, T, error }) {
-  const [pin, setPin] = React.useState("");
-  function add(d) {
+// ─── COMPOSANT PIN ────────────────────────────────────────────────────────────
+function PinPad({ title, subtitle, onSubmit, T, error, blocked }) {
+  const [pin, setPin] = useState("");
+  const add = d => {
+    if (blocked) return;
     if (pin.length >= 4) return;
-    const next = pin + d;
-    setPin(next);
-    if (next.length === 4) { setTimeout(() => { onSubmit(next); setPin(""); }, 150); }
-  }
+    const p = pin + d; setPin(p);
+    if (p.length === 4) setTimeout(() => { onSubmit(p); setPin(""); }, 140);
+  };
   return (
     <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", minHeight:"100vh", padding:24, background:T.bg }}>
-      <div style={{ fontWeight:900, fontSize:22, marginBottom:8, color:T.text }}>{title}</div>
+      <svg width="54" height="54" viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg" style={{marginBottom:22,filter:"drop-shadow(0 6px 24px #00C89640)"}}>
+  <rect x="4" y="4" width="44" height="44" rx="14" fill="url(#msgrad_pin)"/>
+  <path d="M12 36 L12 18 L26 29 L40 18 L40 36" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <circle cx="26" cy="40" r="3" fill="white" opacity="0.95"/>
+  <defs>
+    <linearGradient id="msgrad_pin" x1="0" y1="0" x2="52" y2="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#00C896"/>
+      <stop offset="50%" stop-color="#00A5FF"/>
+      <stop offset="100%" stop-color="#7B2FBE"/>
+    </linearGradient>
+  </defs>
+</svg>
+      <div style={{ fontWeight:900, fontSize:24, marginBottom:6, textAlign:"center", color:T.text }}>{title}</div>
       <div style={{ fontSize:13, color:T.sub, marginBottom:36, textAlign:"center" }}>{subtitle}</div>
       <div style={{ display:"flex", gap:18, marginBottom:36 }}>
         {[0,1,2,3].map(i=>(
@@ -201,20 +316,24 @@ function Inscription({ onDone, T }) {
   async function handlePinConfirm(p) {
     if (p !== pin) { setError("Les codes PIN ne correspondent pas."); setStep(2); setPin(""); return; }
     setLoading(true);
+    const refCode = getRefFromURL();
     const pinHash = await hashPin(p);
     const agent = {
       nom: form.nom.trim(), telephone: form.telephone.trim(),
       reseau: form.reseau, pin: pinHash,
+      referral_code: form.telephone.trim(),
+      referred_by: refCode || null,
+      referral_count: 0,
       trial_days: 14,
       trial_extended: false,
       subscription_status: "trial",
       created_at: nowISO(), trial_start: nowISO()
     };
     const saved = await saveAgent(agent);
+    if (refCode) await crediterParrain(refCode);
     const fresh = await fetchAgent(agent.telephone);
     const trusted = fresh ? { ...fresh, pin: pinHash } : { ...(saved||agent), pin: pinHash };
     lsSet("ms_agent", trusted);
-    setLoading(false);
     onDone(trusted);
   }
 
@@ -233,45 +352,50 @@ function Inscription({ onDone, T }) {
     const agent = lsGet("ms_agent");
     const pinHash = await hashPin(p);
     if (pinHash === agent?.pin) {
-      onDone(agent); setLoginAttempts(0);
+      onDone(agent);
+      setLoginAttempts(0);
     } else {
-      const n = loginAttempts + 1; setLoginAttempts(n);
-      if (n >= 3) {
+      const newAttempts = loginAttempts + 1;
+      setLoginAttempts(newAttempts);
+      if (newAttempts >= 3) {
         setLoginBlocked(true);
         setError("🔒 3 tentatives échouées — bloqué 5 minutes.");
-        setTimeout(()=>{ setLoginBlocked(false); setLoginAttempts(0); setError(""); }, 5*60*1000);
+        setTimeout(() => { setLoginBlocked(false); setLoginAttempts(0); setError(""); }, 5*60*1000);
       } else {
-        setError(`Code PIN incorrect. ${3-n} tentative${3-n>1?"s":""} restante${3-n>1?"s":""}.`);
+        setError(`Code PIN incorrect. ${3-newAttempts} tentative${3-newAttempts>1?"s":""} restante${3-newAttempts>1?"s":""}.`);
       }
     }
   }
 
-  if (step===2)  return <PinPad title="Crée ton PIN 🔐" subtitle="4 chiffres pour sécuriser ton compte" onSubmit={handlePinCreate} T={T} />;
-  if (step===3)  return <PinPad title="Confirme ton PIN" subtitle="Retape les mêmes 4 chiffres" onSubmit={handlePinConfirm} T={T} error={error} />;
+  // ── Écrans PIN ──
+  if (step===2) return <PinPad title="Crée ton PIN 🔐" subtitle="4 chiffres pour sécuriser ton compte" onSubmit={handlePinCreate} T={T} />;
+  if (step===3) return <PinPad title="Confirme ton PIN" subtitle="Retape les mêmes 4 chiffres" onSubmit={handlePinConfirm} T={T} error={error} />;
   if (step===10) return <PinPad title="Bon retour 👋" subtitle="Entre ton code PIN" onSubmit={handlePinLogin} T={T} error={error} />;
 
   return (
     <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", minHeight:"100vh", padding:w>=640?40:24, background:T.bg }}>
       <div style={{ width:"100%", maxWidth:400 }}>
+        {/* Logo */}
         <div style={{ display:"flex", flexDirection:"column", alignItems:"center", marginBottom:30 }}>
           <svg width="58" height="58" viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg" style={{marginBottom:14,filter:"drop-shadow(0 6px 26px #00C89640)"}}>
-            <rect x="4" y="4" width="44" height="44" rx="14" fill="url(#msgrad_ins)"/>
-            <path d="M12 36 L12 18 L26 29 L40 18 L40 36" stroke="white" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
-            <circle cx="26" cy="40" r="3" fill="white" opacity="0.95"/>
-            <defs>
-              <linearGradient id="msgrad_ins" x1="0" y1="0" x2="52" y2="52" gradientUnits="userSpaceOnUse">
-                <stop offset="0%" stopColor="#00C896"/>
-                <stop offset="50%" stopColor="#00A5FF"/>
-                <stop offset="100%" stopColor="#7B2FBE"/>
-              </linearGradient>
-            </defs>
-          </svg>
+  <rect x="4" y="4" width="44" height="44" rx="14" fill="url(#msgrad_ins)"/>
+  <path d="M12 36 L12 18 L26 29 L40 18 L40 36" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <circle cx="26" cy="40" r="3" fill="white" opacity="0.95"/>
+  <defs>
+    <linearGradient id="msgrad_ins" x1="0" y1="0" x2="52" y2="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#00C896"/>
+      <stop offset="50%" stop-color="#00A5FF"/>
+      <stop offset="100%" stop-color="#7B2FBE"/>
+    </linearGradient>
+  </defs>
+</svg>
           <div style={{ fontWeight:900, fontSize:28, marginBottom:4, color:T.text }}>Mon Point</div>
           <div style={{ fontSize:13, color:T.sub, textAlign:"center" }}>
             {mode==="register" ? "Ton cahier MoMo numérique 🇧🇯" : "Reconnecte-toi à ton espace"}
           </div>
         </div>
 
+        {/* Toggle */}
         <div style={{ display:"flex", background:T.hero, borderRadius:13, padding:4, marginBottom:26, border:`1px solid ${T.border}` }}>
           {[["register","Nouveau compte"],["login","Se connecter"]].map(([m,label])=>(
             <button key={m} onClick={()=>{setMode(m);setStep(1);setError("");}}
@@ -281,6 +405,7 @@ function Inscription({ onDone, T }) {
           ))}
         </div>
 
+        {/* ═══ FORMULAIRE INSCRIPTION ═══ */}
         {mode==="register" && step===1 && (<>
           <div style={{ marginBottom:13 }}>
             <div style={{ fontSize:11, color:T.sub, marginBottom:7, fontWeight:700, letterSpacing:1 }}>TON NOM COMPLET</div>
@@ -305,14 +430,20 @@ function Inscription({ onDone, T }) {
             </div>
           </div>
           <div style={{ background:"#00C89612", border:"1px solid #00C89630", borderRadius:12, padding:"11px 16px", marginBottom:20, fontSize:12, color:"#00C896", textAlign:"center" }}>
-            🎁 <strong>2 mois d'essai gratuit</strong> — aucune carte bancaire requise
+            🎁 <strong>14 jours gratuits</strong> — aucune carte bancaire requise
           </div>
+          {getRefFromURL() && (
+            <div style={{ background:"#FFB80012", border:"1px solid #FFB80030", borderRadius:12, padding:"11px 16px", marginBottom:16, fontSize:12, color:"#FFB800", textAlign:"center" }}>
+              🎉 Tu as été invité par un ami — profite de ton essai gratuit !
+            </div>
+          )}
           <button onClick={handleRegisterStep1} disabled={loading}
             style={{ width:"100%", padding:17, borderRadius:14, background:"linear-gradient(135deg,#00C896,#00A5FF)", border:"none", color:"#fff", fontWeight:900, fontSize:16, cursor:loading?"not-allowed":"pointer", opacity:loading?0.7:1 }}>
             {loading?"⏳ Vérification...":"Créer mon compte →"}
           </button>
         </>)}
 
+        {/* ═══ FORMULAIRE CONNEXION ═══ */}
         {mode==="login" && step===1 && (<>
           <div style={{ marginBottom:22 }}>
             <div style={{ fontSize:11, color:T.sub, marginBottom:7, fontWeight:700, letterSpacing:1 }}>TON NUMÉRO DE TÉLÉPHONE</div>
@@ -374,13 +505,13 @@ function PaymentWall({ agent, T, onPaid, onBack }) {
 
         <svg width="64" height="64" viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg" style={{margin:"0 auto 20px",display:"block",filter:"drop-shadow(0 8px 30px #00C89640)"}}>
   <rect x="4" y="4" width="44" height="44" rx="14" fill="url(#msgrad_pay)"/>
-  <path d="M12 36 L12 18 L26 29 L40 18 L40 36" stroke="white" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+  <path d="M12 36 L12 18 L26 29 L40 18 L40 36" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
   <circle cx="26" cy="40" r="3" fill="white" opacity="0.95"/>
   <defs>
     <linearGradient id="msgrad_pay" x1="0" y1="0" x2="52" y2="52" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stopColor="#00C896"/>
-      <stop offset="50%" stopColor="#00A5FF"/>
-      <stop offset="100%" stopColor="#7B2FBE"/>
+      <stop offset="0%" stop-color="#00C896"/>
+      <stop offset="50%" stop-color="#00A5FF"/>
+      <stop offset="100%" stop-color="#7B2FBE"/>
     </linearGradient>
   </defs>
 </svg>
@@ -431,8 +562,12 @@ function PaymentWall({ agent, T, onPaid, onBack }) {
 
         <div style={{ marginTop:20, background:"#FFB80010", border:"1px solid #FFB80030", borderRadius:14, padding:"14px 16px" }}>
           <div style={{ fontSize:12, color:"#FFB800", fontWeight:700, marginBottom:6 }}>💡 Pas encore prêt à payer ?</div>
+          <div style={{ fontSize:11, color:T.sub, marginBottom:10 }}>Invite 1 ami avec ton lien → gagne <strong style={{color:"#FFB800"}}>+16 jours gratuits</strong> avant de payer.</div>
           <button onClick={()=>{ navigator.clipboard?.writeText(`https://monpoint.site?ref=${agent.telephone}`); alert("Lien copié !"); }}
             style={{ width:"100%", padding:"9px 0", borderRadius:10, background:"#FFB80020", border:"1px solid #FFB80050", color:"#FFB800", fontWeight:700, fontSize:12, cursor:"pointer" }}>
+            📋 Copier mon lien de parrainage
+          </button>
+        </div>
 
       </div>
     </div>
@@ -501,12 +636,12 @@ export default function MonPoint() {
   const [pendingCount,  setPendingCount]  = useState(0);
   const [showPaywall,   setShowPaywall]   = useState(false);
   const [floats,        setFloats]        = useState({ MTN:null, MOOV:null, Celtiis:null });
-  const [capitalCash,   setCapitalCash]   = useState(null);
-  const [showCashModal, setShowCashModal] = useState(false);
-  const [showMorningModal, setShowMorningModal] = useState(false);
-  const [morningInputs, setMorningInputs] = useState({ cash:"", MTN:"", MOOV:"", Celtiis:"" });
-  const [cashInput,     setCashInput]     = useState("");
   const [showFloatModal,setShowFloatModal]= useState(false);
+  const [capitalCash,   setCapitalCash]   = useState(null);
+  const [cashInput,     setCashInput]     = useState("");
+  const [showCashModal, setShowCashModal] = useState(false);
+  const [showMorningModal,setShowMorningModal] = useState(false);
+  const [morningInputs,   setMorningInputs]    = useState({ cash:"", MTN:"", MOOV:"", Celtiis:"" });
   const [floatEditOp,   setFloatEditOp]  = useState(null);
   const [floatInput,    setFloatInput]   = useState("");
 
@@ -590,13 +725,13 @@ export default function MonPoint() {
     const faviconSVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 52 52">
       <defs>
         <linearGradient id="fg" x1="0" y1="0" x2="52" y2="52" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#00C896"/>
-          <stop offset="50%" stopColor="#00A5FF"/>
-          <stop offset="100%" stopColor="#7B2FBE"/>
+          <stop offset="0%" stop-color="#00C896"/>
+          <stop offset="50%" stop-color="#00A5FF"/>
+          <stop offset="100%" stop-color="#7B2FBE"/>
         </linearGradient>
       </defs>
       <rect x="2" y="2" width="48" height="48" rx="14" fill="url(#fg)"/>
-      <path d="M11 37 L11 17 L26 29 L41 17 L41 37" stroke="white" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+      <path d="M11 37 L11 17 L26 29 L41 17 L41 37" stroke="white" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
       <circle cx="26" cy="41" r="3.5" fill="white" opacity="0.95"/>
     </svg>`;
 
@@ -722,15 +857,16 @@ export default function MonPoint() {
 
   useEffect(() => { if (agent && !locked) loadTxs(selectedDate); }, [selectedDate, agent, locked]);
   useEffect(() => { if (agent && !locked) loadFloats(selectedDate); }, [selectedDate, agent, locked]);
-  // Déclencher modal matin si aujourd'hui et rien de défini
   useEffect(() => {
-    if (!agent || locked || !isToday) return;
-    const storedFloat = lsGet(floatKey(todayStr(), agent.telephone));
-    const storedCash  = lsGet(cashKey(todayStr(), agent.telephone));
-    const noFloat = !storedFloat || Object.values(storedFloat).every(v => v === null);
+    if (!agent || locked) return;
+    const today = todayStr();
+    if (selectedDate !== today) return;
+    const storedFloat = lsGet(floatKey(today, agent.telephone));
+    const storedCash  = lsGet(cashKey(today, agent.telephone));
+    const noFloat = !storedFloat || Object.values(storedFloat).every(v=>v===null);
     const noCash  = storedCash === null || storedCash === undefined;
     if (noFloat && noCash) setShowMorningModal(true);
-  }, [agent, locked]);
+  }, [agent, locked, selectedDate]);
   useEffect(() => { if (agent && !locked) fetchActiveDays(calYear, calMonth, agent.telephone).then(setActiveDays); }, [calMonth, calYear, agent, locked]);
 
   const sum      = f => txs.filter(f).reduce((s,t) => s+Number(t.montant),    0);
@@ -746,7 +882,7 @@ export default function MonPoint() {
       type:modal, operateur:form.operateur, montant:Number(form.montant),
       commission:calcCom(modal, form.operateur, Number(form.montant)),
       client:form.client||"Client", telephone:form.telephone||null,
-      heure:new Date().toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}),
+      forfait:null, heure:new Date().toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}),
       user_id:agent.telephone, localId, created_at:nowISO()
     };
     const optimistic = { ...tx, id:localId };
@@ -791,8 +927,6 @@ export default function MonPoint() {
     if (capitalCash === null) return null;
     const depots   = txs.filter(t=>t.type==="depot")  .reduce((s,t)=>s+Number(t.montant),0);
     const retraits = txs.filter(t=>t.type==="retrait").reduce((s,t)=>s+Number(t.montant),0);
-    // Dépôt  → agent reçoit cash du client  → cash monte
-    // Retrait → agent donne cash au client  → cash descend
     return capitalCash + depots - retraits;
   }
 
@@ -800,6 +934,8 @@ export default function MonPoint() {
     if (floats[op] === null || floats[op] === undefined) return null;
     const depots   = txs.filter(t=>t.operateur===op&&t.type==="depot")  .reduce((s,t)=>s+Number(t.montant),0);
     const retraits = txs.filter(t=>t.operateur===op&&t.type==="retrait").reduce((s,t)=>s+Number(t.montant),0);
+    // Dépôt → agent envoie unités → float baisse
+    // Retrait → agent reçoit unités → float monte
     return floats[op] - depots + retraits;
   }
 
@@ -857,6 +993,8 @@ export default function MonPoint() {
   const mainLeft   = desktop ? 240 : 0;
 
   // ── Couleur bannière trial ───────────────────────────────────────────────────
+  const trialColor  = trialInfo?.daysLeft <= 3 ? "#E63946" : trialInfo?.daysLeft <= 7 ? "#FFB800" : "#00C896";
+  const trialBg     = trialInfo?.daysLeft <= 3 ? "#E6394612" : trialInfo?.daysLeft <= 7 ? "#FFB80012" : "#00C89612";
 
   return (<>
     <style>{`
@@ -872,12 +1010,17 @@ export default function MonPoint() {
       {/* FLASH */}
       {flash && (
         <div style={{ position:"fixed", top:20, left:"50%", transform:"translateX(-50%)", background:TYPE_COLOR[flash]||"#9B5FDE", color:"#fff", borderRadius:14, padding:"12px 28px", fontWeight:800, fontSize:14, zIndex:9999, boxShadow:"0 4px 24px #0009", whiteSpace:"nowrap" }}>
-          ✅ {TYPE_LABEL[flash]||"Opération"} enregistrée !
+          ✅ {TYPE_LABEL[flash]||"Forfait"} enregistré !
         </div>
       )}
 
 
-
+      {/* BADGE PENDING */}
+      {pendingCount > 0 && (
+        <div style={{ position:"fixed", bottom:mobile?80:88, left:12, background:"#FFB800", color:"#000", borderRadius:20, padding:"5px 11px", fontWeight:800, fontSize:11, zIndex:999, boxShadow:"0 2px 10px #FFB80060", pointerEvents:"none" }}>
+          ⚡ {pendingCount} en attente
+        </div>
+      )}
 
       {/* ══ SIDEBAR DESKTOP ═════════════════════════════════════════════ */}
       {desktop && (
@@ -885,13 +1028,13 @@ export default function MonPoint() {
           <div style={{ display:"flex", alignItems:"center", gap:12, padding:"22px 20px 20px", borderBottom:`1px solid ${T.border}` }}>
             <svg width="42" height="42" viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg" style={{flexShrink:0}}>
   <rect x="4" y="4" width="44" height="44" rx="14" fill="url(#msgrad_sb)"/>
-  <path d="M12 36 L12 18 L26 29 L40 18 L40 36" stroke="white" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+  <path d="M12 36 L12 18 L26 29 L40 18 L40 36" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
   <circle cx="26" cy="40" r="3" fill="white" opacity="0.95"/>
   <defs>
     <linearGradient id="msgrad_sb" x1="0" y1="0" x2="52" y2="52" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stopColor="#00C896"/>
-      <stop offset="50%" stopColor="#00A5FF"/>
-      <stop offset="100%" stopColor="#7B2FBE"/>
+      <stop offset="0%" stop-color="#00C896"/>
+      <stop offset="50%" stop-color="#00A5FF"/>
+      <stop offset="100%" stop-color="#7B2FBE"/>
     </linearGradient>
   </defs>
 </svg>
@@ -901,10 +1044,17 @@ export default function MonPoint() {
             </div>
           </div>
 
-          {/* Bannière essai desktop — fixe */}
-          <div style={{ margin:"12px 14px 0", background:"#00C89612", border:"1px solid #00C89630", borderRadius:11, padding:"10px 14px", textAlign:"center" }}>
-            <div style={{ fontSize:11, color:"#00C896", fontWeight:800 }}>🎁 2 mois d'essai gratuit</div>
-          </div>
+          {/* Bannière trial desktop */}
+          {trialInfo?.status === "trial" && (
+            <div style={{ margin:"12px 14px 0", background:trialBg, border:`1px solid ${trialColor}40`, borderRadius:11, padding:"10px 14px" }}>
+              <div style={{ fontSize:11, color:trialColor, fontWeight:800 }}>
+                ⏳ {trialInfo.daysLeft} jour{trialInfo.daysLeft>1?"s":""} d'essai restant{trialInfo.daysLeft>1?"s":""}
+              </div>
+              {!agent.trial_extended && (
+                <div style={{ fontSize:10, color:T.sub, marginTop:3 }}>Invite 1 ami → +16 jours gratuits</div>
+              )}
+            </div>
+          )}
 
           <div style={{ margin:"12px 14px 6px", background:T.card, borderRadius:13, padding:"12px 14px", border:`1px solid ${T.border}` }}>
             <div style={{ fontSize:11, color:T.sub }}>Connecté en tant que</div>
@@ -948,13 +1098,13 @@ export default function MonPoint() {
           <div style={{ display:"flex", alignItems:"center", gap:10 }}>
             <svg width="38" height="38" viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg">
   <rect x="4" y="4" width="44" height="44" rx="14" fill="url(#msgrad2)"/>
-  <path d="M12 36 L12 18 L26 29 L40 18 L40 36" stroke="white" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+  <path d="M12 36 L12 18 L26 29 L40 18 L40 36" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
   <circle cx="26" cy="40" r="3" fill="white" opacity="0.95"/>
   <defs>
     <linearGradient id="msgrad2" x1="0" y1="0" x2="52" y2="52" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stopColor="#00C896"/>
-      <stop offset="50%" stopColor="#00A5FF"/>
-      <stop offset="100%" stopColor="#7B2FBE"/>
+      <stop offset="0%" stop-color="#00C896"/>
+      <stop offset="50%" stop-color="#00A5FF"/>
+      <stop offset="100%" stop-color="#7B2FBE"/>
     </linearGradient>
   </defs>
 </svg>
@@ -964,8 +1114,13 @@ export default function MonPoint() {
             </div>
           </div>
           <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-
-
+            {/* Badge trial mobile */}
+            {trialInfo?.status === "trial" && (
+              <div style={{ background:trialBg, color:trialColor, borderRadius:8, padding:"3px 8px", fontSize:10, fontWeight:800, border:`1px solid ${trialColor}30` }}>
+                ⏳ {trialInfo.daysLeft}j
+              </div>
+            )}
+            {pendingCount > 0 && <div style={{ background:"#FFB80018", color:"#FFB800", borderRadius:8, padding:"3px 8px", fontSize:10, fontWeight:700 }}>⚡{pendingCount}</div>}
             <button onClick={()=>setShowCal(true)} style={{ background:dark?"#1C1F2E":"#E4E8F5", border:"none", borderRadius:10, padding:"8px 10px", cursor:"pointer", fontSize:18, lineHeight:1 }}>📅</button>
           </div>
         </header>
@@ -1001,7 +1156,22 @@ export default function MonPoint() {
       <main style={{ marginLeft:mainLeft, paddingTop:desktop?62:0, minHeight:"100vh" }}>
         <div style={{ maxWidth:desktop?860:tablet?720:"100%", margin:"0 auto", padding:contentPad }}>
 
-          
+          {/* Bannière trial mobile */}
+          {trialInfo?.status === "trial" && !desktop && (
+            <div style={{ background:trialBg, border:`1px solid ${trialColor}40`, borderRadius:12, padding:"10px 16px", marginBottom:14, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+              <div>
+                <div style={{ fontSize:13, fontWeight:800, color:trialColor }}>
+                  ⏳ {trialInfo.daysLeft} jour{trialInfo.daysLeft>1?"s":""} d'essai restant{trialInfo.daysLeft>1?"s":""}
+                </div>
+                {!agent.trial_extended && <div style={{ fontSize:11, color:T.sub, marginTop:2 }}>Invite 1 ami pour +16 jours gratuits</div>}
+              </div>
+              {trialInfo.daysLeft <= 5 && (
+                <button onClick={()=>setTab("profil")} style={{ background:trialColor, border:"none", borderRadius:9, padding:"7px 14px", color:"#fff", fontSize:11, fontWeight:800, cursor:"pointer", whiteSpace:"nowrap" }}>
+                  Voir offre
+                </button>
+              )}
+            </div>
+          )}
 
           {/* Bandeau date passée */}
           {!isToday && (
@@ -1017,16 +1187,16 @@ export default function MonPoint() {
             {/* ══ CARTE CAPITAL CASH ══ */}
             {(()=>{
               const cashActuel = calcCashActuel();
-              const cashPct = capitalCash > 0 && cashActuel !== null ? Math.max(0, Math.min(100, (cashActuel / capitalCash) * 100)) : 0;
-              const cashColor = cashActuel === null ? T.sub : cashActuel < 0 ? "#E63946" : cashActuel / (capitalCash||1) < 0.2 ? "#FFB800" : "#00C896";
-              const depTotaux   = txs.filter(t=>t.type==="depot")  .reduce((s,t)=>s+Number(t.montant),0);
+              const cashPct   = capitalCash > 0 && cashActuel !== null ? Math.max(0, Math.min(100, (cashActuel/capitalCash)*100)) : 0;
+              const cashColor = cashActuel === null ? T.sub : cashActuel < 0 ? "#E63946" : cashActuel/(capitalCash||1) < 0.2 ? "#FFB800" : "#00C896";
+              const depTotaux = txs.filter(t=>t.type==="depot")  .reduce((s,t)=>s+Number(t.montant),0);
               const retTotaux = txs.filter(t=>t.type==="retrait").reduce((s,t)=>s+Number(t.montant),0);
               return (
                 <div style={{ background:T.card, borderRadius:16, padding:desktop?22:18, marginBottom:14, border:`1px solid #00C89630` }}>
                   <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
                     <div>
                       <div style={{ fontWeight:800, fontSize:14 }}>💵 Capital Cash</div>
-                      <div style={{ fontSize:11, color:T.sub, marginTop:2 }}>Argent liquide disponible</div>
+                      <div style={{ fontSize:11, color:T.sub, marginTop:2 }}>Argent liquide commun (3 réseaux)</div>
                     </div>
                     {isToday && (
                       <button onClick={()=>{setCashInput(capitalCash!==null?String(capitalCash):"");setShowCashModal(true);}}
@@ -1035,55 +1205,45 @@ export default function MonPoint() {
                       </button>
                     )}
                   </div>
-
                   {capitalCash === null ? (
                     <div style={{ textAlign:"center", padding:"12px 0", color:T.faint, fontSize:13 }}>
                       Entre ton capital cash du matin pour suivre ta liquidité
                     </div>
-                  ) : (
-                    <>
-                      {/* Montant principal */}
-                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-end", marginBottom:10 }}>
-                        <div>
-                          <div style={{ fontSize:11, color:T.sub }}>Départ</div>
-                          <div style={{ fontSize:15, fontWeight:700, color:T.sub }}>{fF(capitalCash)}</div>
-                        </div>
-                        <div style={{ textAlign:"right" }}>
-                          <div style={{ fontSize:11, color:T.sub }}>Disponible maintenant</div>
-                          <div style={{ fontSize:26, fontWeight:900, color:cashColor }}>{fF(cashActuel)}</div>
-                        </div>
+                  ) : (<>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-end", marginBottom:10 }}>
+                      <div>
+                        <div style={{ fontSize:11, color:T.sub }}>Départ</div>
+                        <div style={{ fontSize:15, fontWeight:700, color:T.sub }}>{fF(capitalCash)}</div>
                       </div>
-
-                      {/* Barre de progression */}
-                      <div style={{ height:6, background:T.faint, borderRadius:3, overflow:"hidden", marginBottom:10 }}>
-                        <div style={{ height:"100%", width:`${cashPct}%`, background:cashColor, borderRadius:3, transition:"width 0.4s ease" }} />
+                      <div style={{ textAlign:"right" }}>
+                        <div style={{ fontSize:11, color:T.sub }}>Disponible maintenant</div>
+                        <div style={{ fontSize:26, fontWeight:900, color:cashColor }}>{fF(cashActuel)}</div>
                       </div>
-
-                      {/* Détail +/- */}
-                      <div style={{ display:"flex", gap:8 }}>
-                        {depTotaux > 0 && <div style={{ flex:1, background:"#00C89610", border:"1px solid #00C89625", borderRadius:8, padding:"6px 10px", fontSize:11 }}>
-                          <span style={{ color:T.sub }}>⬇️ Dépôts </span><span style={{ color:"#00C896", fontWeight:800 }}>+{fF(depTotaux)}</span>
-                        </div>}
-                        {retTotaux > 0 && <div style={{ flex:1, background:"#E6394610", border:"1px solid #E6394625", borderRadius:8, padding:"6px 10px", fontSize:11 }}>
-                          <span style={{ color:T.sub }}>⬆️ Retraits </span><span style={{ color:"#E63946", fontWeight:800 }}>-{fF(retTotaux)}</span>
-                        </div>}
-                      </div>
-
-                      {/* Alertes */}
-                      {cashActuel < 0 && <div style={{ marginTop:8, background:"#E6394620", border:"1px solid #E6394650", borderRadius:8, padding:"6px 12px", fontSize:11, color:"#E63946", fontWeight:800 }}>🚨 Cash insuffisant ! Tu dois {fF(Math.abs(cashActuel))} de plus</div>}
-                      {cashActuel >= 0 && cashActuel / (capitalCash||1) < 0.2 && <div style={{ marginTop:8, background:"#FFB80015", border:"1px solid #FFB80035", borderRadius:8, padding:"6px 12px", fontSize:11, color:"#FFB800", fontWeight:700 }}>⚠️ Cash faible — pense à te réapprovisionner</div>}
-                    </>
-                  )}
+                    </div>
+                    <div style={{ height:6, background:T.faint, borderRadius:3, overflow:"hidden", marginBottom:10 }}>
+                      <div style={{ height:"100%", width:`${cashPct}%`, background:cashColor, borderRadius:3, transition:"width 0.4s" }} />
+                    </div>
+                    <div style={{ display:"flex", gap:8 }}>
+                      {depTotaux>0 && <div style={{ flex:1, background:"#00C89610", border:"1px solid #00C89625", borderRadius:8, padding:"6px 10px", fontSize:11 }}>
+                        <span style={{ color:T.sub }}>⬇️ Dépôts </span><span style={{ color:"#00C896", fontWeight:800 }}>+{fF(depTotaux)}</span>
+                      </div>}
+                      {retTotaux>0 && <div style={{ flex:1, background:"#E6394610", border:"1px solid #E6394625", borderRadius:8, padding:"6px 10px", fontSize:11 }}>
+                        <span style={{ color:T.sub }}>⬆️ Retraits </span><span style={{ color:"#E63946", fontWeight:800 }}>-{fF(retTotaux)}</span>
+                      </div>}
+                    </div>
+                    {cashActuel !== null && cashActuel < 0 && <div style={{ marginTop:8, background:"#E6394620", border:"1px solid #E6394650", borderRadius:8, padding:"6px 12px", fontSize:11, color:"#E63946", fontWeight:800 }}>🚨 Cash insuffisant ! Il te manque {fF(Math.abs(cashActuel))}</div>}
+                    {cashActuel !== null && cashActuel >= 0 && cashActuel/(capitalCash||1) < 0.2 && <div style={{ marginTop:8, background:"#FFB80015", border:"1px solid #FFB80035", borderRadius:8, padding:"6px 12px", fontSize:11, color:"#FFB800", fontWeight:700 }}>⚠️ Cash faible — pense à te réapprovisionner</div>}
+                  </>)}
                 </div>
               );
             })()}
 
-          {/* ══ CARTE SOLDE DE DÉPART ══ */}
+            {/* ══ CARTE SOLDE DE DÉPART ══ */}
             <div style={{ background:T.card, borderRadius:16, padding:desktop?22:18, marginBottom:14, border:`1px solid #7B2FBE30` }}>
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
                 <div>
-                  <div style={{ fontWeight:800, fontSize:14 }}>💼 Solde de départ du jour</div>
-                  <div style={{ fontSize:11, color:T.sub, marginTop:2 }}>Solde électronique par réseau</div>
+                  <div style={{ fontWeight:800, fontSize:14 }}>💼 Solde de départ</div>
+                  <div style={{ fontSize:11, color:T.sub, marginTop:2 }}>Tes unités disponibles ce jour</div>
                 </div>
                 {isToday && (
                   <button onClick={()=>{setFloatEditOp(null);setFloatInput("");setShowFloatModal(true);}}
@@ -1151,10 +1311,499 @@ export default function MonPoint() {
               })}
             </div>
 
-            {/* ══ MODAL RAPPORT ══ */}
+            {/* ══ VENTE UNITÉS — 3 TAPS ══ */}
+            {isToday && (
+            <div style={{ background:T.card, borderRadius:16, padding:desktop?22:18, marginBottom:14, border:`1px solid #9B5FDE30` }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
+                <div>
+                  <div style={{ fontWeight:800, fontSize:14 }}>📦 Vente d'unités</div>
+                  <div style={{ fontSize:11, color:T.sub, marginTop:2 }}>Enregistre en 3 taps</div>
+                </div>
+                <div style={{ fontSize:11, color:"#9B5FDE", fontWeight:700 }}>{txs.filter(t=>t.type==="forfait").length} vendu{txs.filter(t=>t.type==="forfait").length>1?"s":""}</div>
+              </div>
+
+              {/* Étape 1 — Type de forfait */}
+              <div style={{ marginBottom:12 }}>
+                <div style={{ fontSize:10, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:8 }}>1 — TYPE</div>
+                <div style={{ display:"flex", gap:8 }}>
+                  {[["internet","🌐","Internet"],["appel","📞","Appel"],["simple","📱","Simple"]].map(([k,ico,lbl])=>(
+                    <button key={k} onClick={()=>setForm(f=>({...f, forfaitType:f.forfaitType===k?null:k, forfaitPrix:null}))}
+                      style={{ flex:1, padding:"10px 4px", borderRadius:11, border:`2px solid ${form.forfaitType===k?"#9B5FDE":T.border}`, background:form.forfaitType===k?"#9B5FDE18":"transparent", color:form.forfaitType===k?"#9B5FDE":T.sub, fontWeight:800, fontSize:12, cursor:"pointer", textAlign:"center" }}>
+                      <div style={{ fontSize:16 }}>{ico}</div>
+                      <div style={{ marginTop:2 }}>{lbl}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Étape 2 — Opérateur */}
+              {form.forfaitType && (
+                <div style={{ marginBottom:12 }}>
+                  <div style={{ fontSize:10, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:8 }}>2 — RÉSEAU</div>
+                  <div style={{ display:"flex", gap:8 }}>
+                    {OPERATORS.map(op=>(
+                      <button key={op} onClick={()=>setForm(f=>({...f, forfaitOp:f.forfaitOp===op?null:op, forfaitPrix:null}))}
+                        style={{ flex:1, padding:"10px 0", borderRadius:11, border:`2px solid ${form.forfaitOp===op?OP_COLORS[op]:T.border}`, background:form.forfaitOp===op?OP_BG[op]:"transparent", color:form.forfaitOp===op?OP_COLORS[op]:T.sub, fontWeight:800, fontSize:13, cursor:"pointer" }}>
+                        {op}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Étape 3 — Prix */}
+              {form.forfaitType && form.forfaitOp && (()=>{
+                const GRILLES = {
+                  MTN: {
+                    internet:[100,300,500,1000,2000,3500,6000,15100,20000,25000,30000,50000,75000,100000],
+                    appel:   [100,150,200,300,500,1000,1500,2500,5000],
+                    simple:  [100,200,500,1000,2000,5000,10000],
+                  },
+                  MOOV: {
+                    internet:[200,500,1000,2000,4500,8000,15000,15500,20000,50000],
+                    appel:   [100,200,500,1000,2500,5000],
+                    simple:  [100,200,500,1000,2000,5000],
+                  },
+                  Celtiis: {
+                    internet:[1000,3000,5000,10000,20000],
+                    appel:   [100,150,200,500,1500,3000,5000,10000],
+                    simple:  [200,500,1000,2000,5000],
+                  },
+                };
+                const prix = GRILLES[form.forfaitOp]?.[form.forfaitType] || [];
+                return (
+                  <div style={{ marginBottom:12 }}>
+                    <div style={{ fontSize:10, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:8 }}>3 — MONTANT</div>
+                    <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+                      {prix.map(p=>(
+                        <button key={p} onClick={()=>setForm(f=>({...f, forfaitPrix:p}))}
+                          style={{ padding:"7px 12px", borderRadius:9, border:`2px solid ${form.forfaitPrix===p?OP_COLORS[form.forfaitOp]:T.border}`, background:form.forfaitPrix===p?OP_BG[form.forfaitOp]:"transparent", color:form.forfaitPrix===p?OP_COLORS[form.forfaitOp]:T.sub, fontWeight:700, fontSize:12, cursor:"pointer" }}>
+                          {p>=1000?(p/1000)+"k":p} F
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Bouton enregistrer forfait */}
+              {form.forfaitType && form.forfaitOp && form.forfaitPrix && (
+                <button onClick={async ()=>{
+                  setSaving(true);
+                  const localId = Date.now();
+                  const typeLabels = {internet:"🌐 Internet",appel:"📞 Appel",simple:"📱 Simple"};
+                  const tx = {
+                    type:"forfait", operateur:form.forfaitOp,
+                    montant:Number(form.forfaitPrix), commission:0,
+                    client:typeLabels[form.forfaitType]||"Forfait",
+                    telephone:null, forfait:form.forfaitType,
+                    heure:new Date().toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}),
+                    user_id:agent.telephone, localId, created_at:nowISO()
+                  };
+                  const optimistic = {...tx, id:localId};
+                  setTxs(p=>[optimistic,...p]);
+                  const saved = await saveTxRemote(tx);
+                  if(saved){setTxs(p=>p.map(t=>t.id===localId?saved:t));}
+                  else{const pend=lsGet(pendKey(agent.telephone))||[];lsSet(pendKey(agent.telephone),[...pend,tx]);setPendingCount(c=>c+1);}
+                  const cached=lsGet(txKey(selectedDate,agent.telephone))||[];
+                  lsSet(txKey(selectedDate,agent.telephone),[saved||optimistic,...cached]);
+                  setSaving(false); setForm({}); setFlash("forfait"); setTimeout(()=>setFlash(null),2200);
+                  setTimeout(()=>loadTxs(selectedDate),1200);
+                }} disabled={saving}
+                  style={{ width:"100%", padding:14, borderRadius:12, background:saving?"#1A1D2E":"linear-gradient(135deg,#9B5FDE,#7B2FBE)", border:"none", color:saving?T.sub:"#fff", fontWeight:900, fontSize:14, cursor:saving?"not-allowed":"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+                  {saving?"⏳ Sauvegarde…":`✅ Enregistrer — ${form.forfaitOp} ${form.forfaitType} ${fF(form.forfaitPrix)}`}
+                </button>
+              )}
+            </div>
+            )}
+
+            <button onClick={shareReport} style={{ width:"100%", padding:16, borderRadius:16, background:"linear-gradient(135deg,#25D366,#128C7E)", border:"none", color:"#fff", fontWeight:800, fontSize:14, cursor:"pointer", marginBottom:14, display:"flex", alignItems:"center", justifyContent:"center", gap:10 }}>
+              <span style={{ fontSize:20 }}>📤</span> Envoyer le point du jour sur WhatsApp
+            </button>
+
+            <div style={{ background:T.card, borderRadius:16, padding:desktop?22:18, marginBottom:14, border:`1px solid ${T.border}` }}>
+              <div style={{ fontWeight:800, fontSize:14, marginBottom:16 }}>Par opérateur</div>
+              {OPERATORS.map((op,i)=>{
+                const o = txs.filter(t=>t.operateur===op);
+                return (
+                  <div key={op} style={{ display:"flex", alignItems:"center", gap:12, padding:"11px 0", borderBottom:i<2?`1px solid ${T.border}`:"none" }}>
+                    <div style={{ width:36, height:36, background:OP_BG[op], border:`1px solid ${OP_COLORS[op]}40`, borderRadius:10, display:"flex", alignItems:"center", justifyContent:"center", fontSize:9, fontWeight:900, color:OP_COLORS[op], flexShrink:0 }}>{op}</div>
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontSize:13, fontWeight:700 }}>{op}</div>
+                      <div style={{ fontSize:11, color:T.sub }}>{o.length} opération{o.length>1?"s":""}</div>
+                    </div>
+                    <div style={{ fontWeight:900, color:OP_COLORS[op], fontSize:15 }}>{fF(o.reduce((s,t)=>s+Number(t.montant),0))}</div>
+                  </div>
+                );
+              })}
+            </div>
+
+           
+
+            <div style={{ background:T.card, borderRadius:16, padding:desktop?22:18, border:`1px solid ${T.border}` }}>
+              <div style={{ fontWeight:800, fontSize:14, marginBottom:16 }}>Dernières opérations</div>
+              {loading && <div style={{ textAlign:"center", color:T.faint, padding:"24px 0", fontSize:13 }}>⏳ Chargement…</div>}
+              {!loading && txs.length===0 && <div style={{ textAlign:"center", color:T.faint, padding:"32px 0", fontSize:13 }}>{isToday?"Aucune opération · Appuie sur ⬇️ ou ⬆️":"Aucune opération ce jour"}</div>}
+              {txs.slice(0,6).map((t,i)=>(
+                <div key={t.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"11px 0", borderBottom:i<Math.min(txs.length,8)-1?`1px solid ${T.border}`:"none" }}>
+                  <div style={{ width:38, height:38, borderRadius:11, background:`${TYPE_COLOR[t.type]}15`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:17, flexShrink:0 }}>{TYPE_ICON[t.type]}</div>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontSize:13, fontWeight:700 }}>{TYPE_LABEL[t.type]} <span style={{ color:OP_COLORS[t.operateur] }}>{t.operateur}</span></div>
+                    <div style={{ fontSize:11, color:T.sub, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{t.client}{t.telephone?` · +229 ${t.telephone}`:""} · {t.heure}</div>
+                  </div>
+                  <div style={{ textAlign:"right", flexShrink:0 }}>
+                    <div style={{ fontWeight:900, color:TYPE_COLOR[t.type], fontSize:14 }}>{fF(t.montant)}</div>
+                    <div style={{ fontSize:11, color:T.sub }}>{t.heure||""}</div>
+                  </div>
+                  {isToday && <button onClick={()=>setConfirm(t.id)} style={{ background:"none", border:"none", color:T.faint, cursor:"pointer", fontSize:15, flexShrink:0, padding:"0 4px" }}>🗑️</button>}
+                </div>
+              ))}
+            </div>
+          </>)}
+
+          {/* ══ STATS ══ */}
+          {tab==="stats" && (
+            <div>
+              <div style={{ fontWeight:900, fontSize:desktop?20:18, marginBottom:20 }}>📊 Statistiques</div>
+{["depot","retrait"].map(type=>{
+                const tTxs = txs.filter(t=>t.type===type);
+                return (
+                  <div key={type} style={{ background:T.card, borderRadius:16, padding:desktop?20:16, marginBottom:12, border:`1px solid ${TYPE_COLOR[type]}22` }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", marginBottom:14 }}>
+                      <div style={{ fontWeight:800, fontSize:14 }}>{TYPE_ICON[type]} {TYPE_LABEL[type]}s</div>
+                      <div>
+                        <span style={{ color:TYPE_COLOR[type], fontWeight:900 }}>{fF(tTxs.reduce((s,t)=>s+Number(t.montant),0))}</span>
+                        <span style={{ color:T.sub, fontSize:11 }}> · {fF(tTxs.reduce((s,t)=>s+Number(t.commission),0))}</span>
+                      </div>
+                    </div>
+                    {OPERATORS.map((op,i)=>{
+                      const o = txs.filter(t=>t.type===type&&t.operateur===op);
+                      return (
+                        <div key={op} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"9px 0", borderBottom:i<2?`1px solid ${T.border}`:"none", fontSize:13 }}>
+                          <div><span style={{ color:OP_COLORS[op], fontWeight:700 }}>{op}</span><span style={{ color:T.faint, fontSize:11 }}> {o.length} opération{o.length>1?"s":""}</span></div>
+                          <div><span style={{ fontWeight:700 }}>{fF(o.reduce((s,t)=>s+Number(t.montant),0))}</span><span style={{ color:T.sub, fontSize:11 }}> +{fF(o.reduce((s,t)=>s+Number(t.commission),0))}</span></div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+              <button onClick={shareReport} style={{ width:"100%", padding:16, borderRadius:14, background:"linear-gradient(135deg,#25D366,#128C7E)", border:"none", color:"#fff", fontWeight:800, fontSize:14, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:10 }}>
+                <span style={{ fontSize:20 }}>📤</span> Partager ce rapport
+              </button>
+            </div>
+          )}
+
+          {/* ══ HISTORIQUE ══ */}
+          {tab==="historique" && (
+            <div>
+              <div style={{ fontWeight:900, fontSize:desktop?20:18, marginBottom:20 }}>🗂️ Historique</div>
+              {loading && <div style={{ textAlign:"center", color:T.faint, padding:"48px 0" }}>⏳ Chargement…</div>}
+              {!loading && txs.length===0 && <div style={{ textAlign:"center", color:T.faint, padding:"56px 0", fontSize:14 }}>Aucune opération {isToday?"enregistrée":"ce jour"}</div>}
+              <div style={{ display:"grid", gridTemplateColumns:desktop?"1fr 1fr":"1fr", gap:10 }}>
+                {txs.map(t=>(
+                  <div key={t.id} style={{ background:T.card, borderRadius:14, padding:"14px 16px", border:`1px solid ${TYPE_COLOR[t.type]}18`, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+                      <div style={{ width:38, height:38, borderRadius:11, background:`${TYPE_COLOR[t.type]}15`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16, flexShrink:0 }}>{TYPE_ICON[t.type]}</div>
+                      <div>
+                        <div style={{ fontWeight:700, fontSize:13 }}>{TYPE_LABEL[t.type]} · <span style={{ color:OP_COLORS[t.operateur] }}>{t.operateur}</span></div>
+                        <div style={{ fontSize:11, color:T.sub }}>{t.client}{t.telephone?` · +229 ${t.telephone}`:""} · {t.heure}</div>
+                      </div>
+                    </div>
+                    <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                      <div style={{ textAlign:"right" }}>
+                        <div style={{ fontWeight:900, color:TYPE_COLOR[t.type], fontSize:15 }}>{fF(t.montant)}</div>
+                        <div style={{ fontSize:11, color:T.sub }}>{t.heure||""}</div>
+                      </div>
+                      {isToday && <button onClick={()=>setConfirm(t.id)} style={{ background:"none", border:"none", color:T.faint, cursor:"pointer", fontSize:15, padding:4 }}>🗑️</button>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ══ PROFIL ══ */}
+          {tab==="profil" && (
+            <div>
+              <div style={{ fontWeight:900, fontSize:desktop?20:18, marginBottom:20 }}>👤 Mon Profil</div>
+
+              {/* Infos agent */}
+              <div style={{ background:T.card, borderRadius:18, padding:desktop?26:20, marginBottom:14, border:`1px solid ${T.border}` }}>
+                <div style={{ display:"flex", alignItems:"center", gap:16, marginBottom:20 }}>
+                  <div style={{ width:58, height:58, background:"linear-gradient(135deg,#00C896,#00A5FF)", borderRadius:17, display:"flex", alignItems:"center", justifyContent:"center", fontWeight:900, fontSize:24, color:"#fff", flexShrink:0, boxShadow:"0 4px 16px #00C89640" }}>
+                    {agent.nom?.charAt(0).toUpperCase()}
+                  </div>
+                  <div>
+                    <div style={{ fontWeight:900, fontSize:18 }}>{agent.nom}</div>
+                    <div style={{ fontSize:13, color:T.sub }}>Agent Mobile Money</div>
+                    <div style={{ fontSize:12, color:OP_COLORS[agent.reseau]||"#00C896", marginTop:3, fontWeight:700 }}>{agent.reseau} · +229 {agent.telephone}</div>
+                  </div>
+                </div>
+                <div style={{ display:"grid", gridTemplateColumns:desktop?"1fr 1fr":"1fr", gap:10 }}>
+                  {[
+                    ["📱 Réseau", agent.reseau],
+                    ["📞 WhatsApp", `+229 ${agent.telephone}`],
+                                        ["📅 Inscrit le", agent.trial_start ? new Date(agent.trial_start).toLocaleDateString("fr-FR") : "—"],
+                  ].map(([label,value])=>(
+                    <div key={label} style={{ background:T.hero, borderRadius:12, padding:"12px 16px" }}>
+                      <div style={{ fontSize:11, color:T.sub }}>{label}</div>
+                      <div style={{ fontSize:14, fontWeight:700, marginTop:3 }}>{value}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Statut abonnement */}
+              <div style={{ background:T.card, borderRadius:18, padding:desktop?22:18, marginBottom:14, border:`1px solid ${trialColor}30` }}>
+                <div style={{ fontWeight:800, fontSize:14, marginBottom:14 }}>⏳ Mon abonnement</div>
+                {trialInfo?.status === "trial" && (
+                  <div style={{ background:trialBg, border:`1px solid ${trialColor}40`, borderRadius:12, padding:"14px 16px", marginBottom:14 }}>
+                    <div style={{ fontSize:15, fontWeight:900, color:trialColor }}>
+                      {trialInfo.daysLeft} jour{trialInfo.daysLeft>1?"s":""} d'essai restant{trialInfo.daysLeft>1?"s":""}
+                    </div>
+                    <div style={{ fontSize:12, color:T.sub, marginTop:4 }}>
+                      {agent.trial_extended ? "✅ Tu as déjà profité du bonus parrainage (30j total)" : "Invite 1 ami → gagne +16 jours gratuits"}
+                    </div>
+                  </div>
+                )}
+                {trialInfo?.status === "subscribed" && (
+                  <div style={{ background:"#00C89618", border:"1px solid #00C89640", borderRadius:12, padding:"14px 16px", marginBottom:14 }}>
+                    <div style={{ fontSize:15, fontWeight:900, color:"#00C896" }}>✅ Abonnement actif</div>
+                    <div style={{ fontSize:12, color:T.sub, marginTop:4 }}>{trialInfo.daysLeft} jours restants</div>
+                  </div>
+                )}
+                {trialInfo?.status !== "subscribed" && (
+                  <div style={{ background:`linear-gradient(135deg,${T.hero},${T.card})`, border:`1px solid #00C89630`, borderRadius:12, padding:"16px 18px", textAlign:"center" }}>
+                    <div style={{ fontSize:12, color:T.sub, marginBottom:4 }}>Abonnement mensuel</div>
+                    <div style={{ fontSize:28, fontWeight:900, color:"#00C896", marginBottom:10 }}>1 999 F/mois</div>
+                    <button onClick={()=>setShowPaywall(true)}
+                      style={{ width:"100%", padding:14, borderRadius:12, background:"linear-gradient(135deg,#00C896,#00A5FF)", border:"none", color:"#fff", fontWeight:800, fontSize:14, cursor:"pointer" }}>
+                      💳 S'abonner maintenant
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Parrainage */}
+              <div style={{ background:T.card, borderRadius:18, padding:desktop?22:18, marginBottom:14, border:"1px solid #FFB80030" }}>
+                <div style={{ fontWeight:800, fontSize:14, marginBottom:14 }}>🎁 Parrainage</div>
+                <div style={{ background:"#FFB80012", border:"1px solid #FFB80030", borderRadius:12, padding:"14px 16px", marginBottom:14 }}>
+                  <div style={{ fontSize:13, color:"#FFB800", fontWeight:700, marginBottom:6 }}>
+                    {agent.trial_extended
+                      ? `✅ Bonus utilisé — ${agent.referral_count||0} ami(s) inscrit(s)`
+                      : `👥 ${agent.referral_count||0}/1 ami inscrit — invite 1 ami pour +16 jours !`
+                    }
+                  </div>
+                  <div style={{ fontSize:11, color:T.sub }}>
+                    Partage ton lien. Dès qu'un ami s'inscrit et utilise l'app, tu gagnes automatiquement <strong style={{color:"#FFB800"}}>16 jours gratuits</strong>.
+                  </div>
+                </div>
+                <div style={{ display:"flex", gap:8 }}>
+                  <div style={{ flex:1, background:T.hero, borderRadius:10, padding:"10px 14px", fontSize:11, color:T.sub, wordBreak:"break-all" }}>
+                    {getReferralLink(agent.telephone)}
+                  </div>
+                  <button onClick={()=>{ navigator.clipboard?.writeText(getReferralLink(agent.telephone)); setFlash("depot"); setTimeout(()=>setFlash(null),2000); }}
+                    style={{ flexShrink:0, padding:"10px 16px", borderRadius:10, background:"#FFB80020", border:"1px solid #FFB80050", color:"#FFB800", fontWeight:700, fontSize:12, cursor:"pointer" }}>
+                    📋 Copier
+                  </button>
+                </div>
+                <button onClick={()=>{ const url = getReferralLink(agent.telephone); const text = `📱 J'utilise Mon Point pour gérer mon point MoMo — c'est trop pratique ! Essaie gratuitement : ${url}`; window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank"); }}
+                  style={{ width:"100%", marginTop:10, padding:12, borderRadius:12, background:"linear-gradient(135deg,#25D366,#128C7E)", border:"none", color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+                  <span>📤</span> Partager via WhatsApp
+                </button>
+              </div>
+
+              {/* Données offline */}
+              <div style={{ background:T.card, borderRadius:18, padding:desktop?22:18, marginBottom:14, border:`1px solid ${T.border}` }}>
+                <div style={{ fontWeight:800, fontSize:14, marginBottom:8 }}>💾 Synchronisation</div>
+                <div style={{ fontSize:12, color:T.sub, marginBottom:12 }}>Tes données sont sauvegardées sur Supabase et synchronisées automatiquement.</div>
+                {pendingCount > 0
+                  ? <div style={{ background:"#FFB80018", border:"1px solid #FFB80040", borderRadius:10, padding:"10px 14px", fontSize:12, color:"#FFB800", fontWeight:700 }}>⚡ {pendingCount} opération(s) en attente</div>
+                  : <div style={{ background:"#00C89618", border:"1px solid #00C89630", borderRadius:10, padding:"10px 14px", fontSize:12, color:"#00C896", fontWeight:700 }}>✅ Toutes les données sont synchronisées</div>
+                }
+              </div>
+
+              {/* Thème */}
+              <div style={{ background:T.card, borderRadius:18, padding:desktop?22:18, marginBottom:14, border:`1px solid ${T.border}` }}>
+                <div style={{ fontWeight:800, fontSize:14, marginBottom:14 }}>⚙️ Préférences</div>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                  <div>
+                    <div style={{ fontWeight:700, fontSize:13 }}>{dark?"Mode sombre":"Mode clair"}</div>
+                    <div style={{ fontSize:11, color:T.sub }}>Changer l'apparence</div>
+                  </div>
+                  <button onClick={()=>setDark(d=>!d)} style={{ padding:"9px 18px", borderRadius:10, background:T.hero, border:`1px solid ${T.border}`, color:T.text, fontSize:13, fontWeight:700, cursor:"pointer" }}>
+                    {dark?"☀️ Clair":"🌙 Sombre"}
+                  </button>
+                </div>
+              </div>
+
+              <button onClick={()=>setConfirmLogout(true)} style={{ width:"100%", padding:17, borderRadius:15, background:"#E6394618", border:"2px solid #E6394640", color:"#E63946", fontWeight:800, fontSize:15, cursor:"pointer" }}>
+                🔓 Se déconnecter
+              </button>
+            </div>
+          )}
+
+        </div>
+      </main>
+
+      {/* ══ FABs ════════════════════════════════════════════════════════ */}
+      {!desktop && isToday && (
+        <div style={{ position:"fixed", bottom:mobile?116:124, right:tablet?22:16, display:"flex", flexDirection:"column", gap:10, zIndex:60 }}>
+          <button onClick={()=>{setModal("retrait");setForm({});}}
+            style={{ height:48, paddingLeft:16, paddingRight:18, borderRadius:24, background:"#4F8EF7", border:"none", color:"#fff", fontSize:13, fontWeight:800, cursor:"pointer", boxShadow:"0 4px 18px #4F8EF760", display:"flex", alignItems:"center", gap:8, whiteSpace:"nowrap" }}>
+            <span style={{ fontSize:18 }}>⬆️</span> Retrait
+          </button>
+          <button onClick={()=>{setModal("depot");setForm({});}}
+            style={{ height:54, paddingLeft:18, paddingRight:20, borderRadius:27, background:"linear-gradient(135deg,#00C896,#009E78)", border:"none", color:"#fff", fontSize:14, fontWeight:900, cursor:"pointer", boxShadow:"0 6px 24px #00C89660", display:"flex", alignItems:"center", gap:8, whiteSpace:"nowrap" }}>
+            <span style={{ fontSize:20 }}>⬇️</span> Dépôt
+          </button>
+        </div>
+      )}
+
+      {/* ══ BOTTOM NAV ══════════════════════════════════════════════════ */}
+      {!desktop && (
+        <nav style={{ position:"fixed", bottom:0, left:0, right:0, background:T.nav, borderTop:`1px solid ${T.border}`, zIndex:50 }}>
+          <div style={{ display:"flex", justifyContent:"space-around", padding:tablet?"10px 0 14px":"8px 0 12px" }}>
+            {NAV_ITEMS.map(([key,icon,label])=>(
+              <button key={key} onClick={()=>setTab(key)} style={{ background:"none", border:"none", color:tab===key?"#00C896":T.faint, fontSize:tablet?11:10, fontWeight:tab===key?800:500, cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", gap:3, padding:tablet?"0 18px":"0 12px", WebkitTapHighlightColor:"transparent" }}>
+                <span style={{ fontSize:tablet?23:21 }}>{icon}</span>{label}
+                {tab===key && <div style={{ width:4, height:4, borderRadius:"50%", background:"#00C896" }} />}
+              </button>
+            ))}
+          </div>
+        </nav>
+      )}
+
+      {/* ══ MODAL SAISIE ════════════════════════════════════════════════ */}
+      {modal && (
+        <div style={modalWrap} onClick={()=>setModal(null)}>
+          <div onClick={e=>e.stopPropagation()} style={modalBox}>
+            {!desktop && <div style={{ width:36, height:4, background:T.border2, borderRadius:2, margin:"0 auto 18px" }} />}
+            <div style={{ fontWeight:900, fontSize:18, marginBottom:18 }}>
+              {modal==="depot"?"⬇️ Nouveau Dépôt":"⬆️ Nouveau Retrait"}
+            </div>
+
+            {modal==="retrait" && (
+              <div style={{ marginBottom:16 }}>
+                {form.montant && Number(form.montant)>=100 ? (()=>{
+                  const tranche = getTranche(form.montant);
+                  const c = form.operateur ? calcComRetrait(form.operateur, form.montant) : 0;
+                  return tranche ? (
+                    <div style={{ background:"#4F8EF712", border:"1px solid #4F8EF735", borderRadius:14, padding:"14px 16px" }}>
+                      <div style={{ fontSize:11, color:"#4F8EF7", fontWeight:700, marginBottom:10 }}>
+                        📊 TRANCHE : {Number(tranche.min).toLocaleString("fr-FR")} – {Number(tranche.max).toLocaleString("fr-FR")} F
+                      </div>
+                      <div style={{ display:"flex", gap:8, marginBottom:form.operateur?12:0 }}>
+                        {["MTN","MOOV","Celtiis"].map(op=>{
+                          const sel = op===form.operateur;
+                          return (
+                            <div key={op} style={{ flex:1, textAlign:"center", background:sel?`${OP_COLORS[op]}20`:T.hero, border:`2px solid ${sel?OP_COLORS[op]:T.border}`, borderRadius:11, padding:"10px 4px" }}>
+                              <div style={{ fontSize:10, color:OP_COLORS[op], fontWeight:800, marginBottom:4 }}>{op}</div>
+                              <div style={{ fontSize:15, fontWeight:900, color:sel?OP_COLORS[op]:T.text }}>{fF(tranche[op])}</div>
+                              {sel && <div style={{ fontSize:9, color:OP_COLORS[op], marginTop:2, fontWeight:700 }}>✓ sélectionné</div>}
+                            </div>
+                          );
+                        })}
+                      </div>
+                      {form.operateur && (
+                        <div style={{ background:"#00C89618", border:"1px solid #00C89630", borderRadius:10, padding:"10px 14px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                          <span style={{ fontSize:12, color:T.sub }}>💰 Ta commission</span>
+                          <span style={{ fontSize:18, fontWeight:900, color:"#00C896" }}>{fF(c)}</span>
+                        </div>
+                      )}
+                    </div>
+                  ) : <div style={{ background:"#E6394612", border:"1px solid #E6394635", borderRadius:12, padding:"12px 14px", fontSize:13, color:"#E63946", fontWeight:700 }}>⚠️ Montant hors grille (100 F – 2 000 000 F)</div>;
+                })() : (
+                  <div style={{ background:T.hero, border:`1px solid ${T.border}`, borderRadius:12, padding:"12px 16px", fontSize:12, color:T.sub }}>
+                    💡 Entre le montant pour voir la commission automatiquement
+                  </div>
+                )}
+              </div>
+            )}
+
+            {modal==="depot" && (
+              <div style={{ background:"#00C89610", border:"1px solid #00C89625", borderRadius:12, padding:"11px 14px", marginBottom:16, fontSize:12, color:"#00C896", display:"flex", alignItems:"center", gap:8 }}>
+                <span>ℹ️</span><span>Aucune commission sur les dépôts.</span>
+              </div>
+            )}
+
+            <div style={{ marginBottom:16 }}>
+              <div style={{ fontSize:11, color:T.sub, marginBottom:8, fontWeight:700, letterSpacing:1 }}>OPÉRATEUR</div>
+              <div style={{ display:"flex", gap:8 }}>
+                {OPERATORS.map(op=>(
+                  <button key={op} onClick={()=>setForm(f=>({...f,operateur:op,montant:""}))}
+                    style={{ flex:1, padding:"12px 0", borderRadius:11, border:`2px solid ${form.operateur===op?OP_COLORS[op]:T.border}`, background:form.operateur===op?OP_BG[op]:"transparent", color:form.operateur===op?OP_COLORS[op]:T.sub, fontWeight:800, fontSize:14, cursor:"pointer" }}>
+                    {op}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ marginBottom:16 }}>
+              <div style={{ fontSize:11, color:T.sub, marginBottom:8, fontWeight:700, letterSpacing:1 }}>MONTANT (FCFA)</div>
+              <input type="number" placeholder="Ex : 5000" value={form.montant||""} onChange={e=>setForm(f=>({...f,montant:e.target.value}))}
+                style={{ width:"100%", background:T.input, border:`2px solid ${T.border}`, borderRadius:12, padding:"14px 16px", color:T.text, fontSize:20, fontWeight:700, outline:"none", boxSizing:"border-box" }} />
+            </div>
+
+            <div style={{ marginBottom:22 }}>
+              <div style={{ fontSize:11, color:T.sub, marginBottom:8, fontWeight:700, letterSpacing:1 }}>NUMÉRO DE TÉLÉPHONE (optionnel)</div>
+              <div style={{ display:"flex", gap:8 }}>
+                <div style={{ background:T.input, border:`2px solid ${T.border}`, borderRadius:12, padding:"12px 10px", color:T.text, fontSize:12, fontWeight:700, flexShrink:0 }}>🇧🇯 +229</div>
+                <input type="tel" placeholder="97 00 00 00" value={form.telephone||""} onChange={e=>setForm(f=>({...f,telephone:e.target.value}))}
+                  style={{ flex:1, background:T.input, border:`2px solid ${T.border}`, borderRadius:12, padding:"12px 14px", color:T.text, fontSize:15, fontWeight:700, outline:"none", boxSizing:"border-box" }} />
+              </div>
+            </div>
+
+            <button onClick={addTx} disabled={saving}
+              style={{ width:"100%", padding:17, borderRadius:14, background:saving?"#1A1D2E":modal==="depot"?"#00C896":"#4F8EF7", border:"none", color:saving?T.sub:"#fff", fontWeight:900, fontSize:16, cursor:saving?"not-allowed":"pointer" }}>
+              {saving?"⏳ Sauvegarde…":"Enregistrer ✓"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ══ MODAL CALENDRIER ════════════════════════════════════════════ */}
+      {showCal && (
+        <div style={{ position:"fixed", inset:0, background:"#000C", display:"flex", alignItems:desktop?"center":"flex-end", justifyContent:desktop?"center":"stretch", zIndex:300 }} onClick={()=>setShowCal(false)}>
+          <div onClick={e=>e.stopPropagation()} style={{ background:T.card, borderRadius:desktop?"20px":"22px 22px 0 0", padding:"20px 18px 36px", border:`1px solid ${T.border2}`, width:desktop?380:"100%", maxWidth:desktop?380:"100%" }}>
+            {!desktop && <div style={{ width:36, height:4, background:T.border2, borderRadius:2, margin:"0 auto 18px" }} />}
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:18 }}>
+              <button onClick={()=>{if(calMonth===1){setCalMonth(12);setCalYear(y=>y-1);}else setCalMonth(m=>m-1);}} style={{ background:T.hero, border:"none", borderRadius:9, width:36, height:36, cursor:"pointer", fontSize:18, color:T.text }}>‹</button>
+              <div style={{ fontWeight:800, fontSize:15 }}>{MOIS_FR[calMonth-1]} {calYear}</div>
+              <button onClick={()=>{if(calMonth===12){setCalMonth(1);setCalYear(y=>y+1);}else setCalMonth(m=>m+1);}} style={{ background:T.hero, border:"none", borderRadius:9, width:36, height:36, cursor:"pointer", fontSize:18, color:T.text }}>›</button>
+            </div>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", marginBottom:8 }}>
+              {JOURS.map(j=>(<div key={j} style={{ textAlign:"center", fontSize:10, color:T.sub, fontWeight:700, padding:"4px 0" }}>{j}</div>))}
+            </div>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:4 }}>
+              {Array(getFirstDay(calYear,calMonth)).fill(null).map((_,i)=>(<div key={`e${i}`}/>))}
+              {Array(getDaysInMonth(calYear,calMonth)).fill(null).map((_,i)=>{
+                const day=i+1, ds=`${calYear}-${String(calMonth).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
+                const isTod=ds===todayStr(), isSel=ds===selectedDate, has=activeDays.includes(ds), isFut=ds>todayStr();
+                return (
+                  <button key={day} disabled={isFut} onClick={()=>{setSelectedDate(ds);setShowCal(false);setTab("accueil");}}
+                    style={{ width:"100%", aspectRatio:"1", borderRadius:10, border:isSel?"2px solid #00C896":isTod?`2px solid ${OP_COLORS.MTN}`:`1px solid ${T.border}`, background:isSel?"#00C89620":isTod?"#FFB80015":T.hero, color:isFut?T.faint:isSel?"#00C896":T.text, fontWeight:isSel||isTod?800:500, fontSize:13, cursor:isFut?"not-allowed":"pointer", position:"relative", display:"flex", alignItems:"center", justifyContent:"center", opacity:isFut?0.3:1 }}>
+                    {day}
+                    {has&&!isSel&&<div style={{ position:"absolute", bottom:2, left:"50%", transform:"translateX(-50%)", width:3, height:3, borderRadius:"50%", background:"#00C896" }}/>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══ CONFIRM SUPPRESSION ════════════════════════════════════════ */}
+      
+      {/* ══ MODAL RAPPORT ══ */}
       {showReport && (()=>{
         const dateLabel = new Date(selectedDate).toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
-        const txArgent  = txs;
+        const txArgent  = txs.filter(t=>t.type!=="forfait");
+        const txUnites  = txs.filter(t=>t.type==="forfait");
+        const internetC = txUnites.filter(t=>t.forfait==="internet").length;
+        const appelC    = txUnites.filter(t=>t.forfait==="appel").length;
+        const simpleC   = txUnites.filter(t=>t.forfait==="simple").length;
         const floatLines = OPERATORS.map(op=>{
           const actuel = calcFloatActuel(op);
           if(actuel===null) return null;
@@ -1202,6 +1851,27 @@ export default function MonPoint() {
                 </div>
               </div>
 
+              {/* Séparateur UNITÉS */}
+              {txUnites.length>0&&<>
+              <div style={{ fontWeight:900, fontSize:13, color:"#9B5FDE", borderBottom:"2px solid #9B5FDE30", paddingBottom:6, marginBottom:12 }}>📦 VENTE D'UNITÉS</div>
+              {OPERATORS.map(op=>{
+                const us = txUnites.filter(t=>t.operateur===op);
+                if(us.length===0) return null;
+                const intC=us.filter(t=>t.forfait==="internet").length;
+                const apC=us.filter(t=>t.forfait==="appel").length;
+                const siC=us.filter(t=>t.forfait==="simple").length;
+                return (
+                  <div key={op} style={{ marginBottom:10, background:"#f8f8f8", borderRadius:10, padding:"10px 14px" }}>
+                    <div style={{ fontWeight:800, fontSize:13, marginBottom:4, color:"#333" }}>{op}</div>
+                    {intC>0&&<div style={{ fontSize:13 }}>🌐 Internet : <strong>{intC}</strong></div>}
+                    {apC>0&&<div style={{ fontSize:13 }}>📞 Appel : <strong>{apC}</strong></div>}
+                    {siC>0&&<div style={{ fontSize:13 }}>📱 Simple : <strong>{siC}</strong></div>}
+                    <div style={{ fontSize:12, color:"#888", marginTop:3 }}>Total : {fF(us.reduce((s,t)=>s+Number(t.montant),0))}</div>
+                  </div>
+                );
+              })}
+              </>}
+
               {/* Soldes float */}
               {floatLines.length>0&&<>
               <div style={{ fontWeight:900, fontSize:13, color:"#4F8EF7", borderBottom:"2px solid #4F8EF730", paddingBottom:6, marginBottom:12, marginTop:4 }}>💼 SOLDES</div>
@@ -1223,8 +1893,6 @@ export default function MonPoint() {
 
 `;
                 txt += `💵 *TRANSACTIONS ARGENT*
-                const cashFinal = calcCashActuel();
-                if(cashFinal !== null) txt += `💵 Cash départ : ${fF(capitalCash)} → Disponible : ${fF(cashFinal)}\n`;
 `;
                 OPERATORS.forEach(op=>{
                   const deps=txArgent.filter(t=>t.type==="depot"&&t.operateur===op);
@@ -1241,6 +1909,27 @@ export default function MonPoint() {
                 });
                 txt+=`
 💰 CA Total: ${fF(totalCA)} | ✅ Commission: ${fF(totalCom)}
+`;
+                if(txUnites.length){
+                  txt+=`
+📦 *VENTE D'UNITÉS*
+`;
+                  OPERATORS.forEach(op=>{
+                    const us=txUnites.filter(t=>t.operateur===op);
+                    if(us.length){
+                      const intC=us.filter(t=>t.forfait==="internet").length;
+                      const apC=us.filter(t=>t.forfait==="appel").length;
+                      const siC=us.filter(t=>t.forfait==="simple").length;
+                      txt+=`
+▪️ ${op}: `;
+                      if(intC) txt+=`🌐${intC} `;
+                      if(apC)  txt+=`📞${apC} `;
+                      if(siC)  txt+=`📱${siC} `;
+                      txt+=`· ${fF(us.reduce((s,t)=>s+Number(t.montant),0))}
+`;
+                    }
+                  });
+                }
                 txt+=`
 _Mon Point_`;
                 window.open(`https://wa.me/?text=${encodeURIComponent(txt)}`,"_blank");
@@ -1280,58 +1969,40 @@ _Mon Point_`;
         </div>
       )}
 
-      {/* ══ MODAL CAPITAL CASH ══ */}
-      {/* ══ MODAL MATIN — SAISIE DE DÉPART ══ */}
+      {/* ══ MODAL MATIN ══ */}
       {showMorningModal && (
         <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.92)", zIndex:10000, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
           <div style={{ background:dark?"#13162A":"#fff", borderRadius:22, padding:24, maxWidth:400, width:"100%", maxHeight:"92vh", overflowY:"auto" }}>
-
-            {/* Header */}
             <div style={{ textAlign:"center", marginBottom:22 }}>
-              <div style={{ fontSize:32, marginBottom:8 }}>🌅</div>
+              <div style={{ fontSize:34, marginBottom:8 }}>🌅</div>
               <div style={{ fontWeight:900, fontSize:20, color:dark?"#fff":"#111" }}>Bonne journée, {agent.nom.split(" ")[0]} !</div>
               <div style={{ fontSize:13, color:dark?"#8A8FA8":"#666", marginTop:6 }}>Entre tes fonds de départ pour commencer</div>
             </div>
-
-            {/* Espèces cash */}
             <div style={{ marginBottom:18 }}>
-              <div style={{ fontSize:11, fontWeight:800, letterSpacing:1, color:"#00C896", marginBottom:8 }}>💵 ESPÈCES EN LIQUIDE (commun 3 réseaux)</div>
-              <div style={{ fontSize:11, color:dark?"#8A8FA8":"#888", marginBottom:8 }}>L'argent cash total que tu as en main ce matin</div>
-              <input
-                type="number" inputMode="numeric" placeholder="Ex: 300000"
-                value={morningInputs.cash}
-                onChange={e=>setMorningInputs(p=>({...p, cash:e.target.value}))}
-                style={{ width:"100%", background:dark?"#1A1D2E":"#f5f5f5", border:"2px solid #00C89650", borderRadius:12, padding:"14px 16px", color:dark?"#fff":"#111", fontSize:16, fontWeight:700, outline:"none", boxSizing:"border-box" }}
-              />
+              <div style={{ fontSize:11, fontWeight:800, letterSpacing:1, color:"#00C896", marginBottom:6 }}>💵 ESPÈCES EN LIQUIDE (commun 3 réseaux)</div>
+              <div style={{ fontSize:11, color:dark?"#8A8FA8":"#888", marginBottom:8 }}>L'argent cash total en main ce matin</div>
+              <input type="number" inputMode="numeric" placeholder="Ex: 300000"
+                value={morningInputs.cash} onChange={e=>setMorningInputs(p=>({...p,cash:e.target.value}))}
+                style={{ width:"100%", background:dark?"#1A1D2E":"#f5f5f5", border:"2px solid #00C89650", borderRadius:12, padding:"14px 16px", color:dark?"#fff":"#111", fontSize:16, fontWeight:700, outline:"none", boxSizing:"border-box" }} />
             </div>
-
-            {/* Séparateur */}
-            <div style={{ borderTop:`1px solid ${dark?"#2A2D3E":"#eee"}`, marginBottom:18, paddingTop:18 }}>
+            <div style={{ borderTop:`1px solid ${dark?"#2A2D3E":"#eee"}`, paddingTop:18, marginBottom:18 }}>
               <div style={{ fontSize:11, fontWeight:800, letterSpacing:1, color:"#9B5FDE", marginBottom:4 }}>📱 SOLDES ÉLECTRONIQUES MOMO</div>
-              <div style={{ fontSize:11, color:dark?"#8A8FA8":"#888", marginBottom:14 }}>Le solde disponible sur chaque compte au départ</div>
-
-              {[["MTN","#FFB800"],["MOOV","#00A5FF"],["Celtiis","#E63946"]].map(([op, color])=>(
+              <div style={{ fontSize:11, color:dark?"#8A8FA8":"#888", marginBottom:14 }}>Solde disponible sur chaque compte au départ</div>
+              {[["MTN","#FFB800"],["MOOV","#00A5FF"],["Celtiis","#E63946"]].map(([op,color])=>(
                 <div key={op} style={{ marginBottom:12 }}>
                   <div style={{ fontSize:12, fontWeight:800, color, marginBottom:6 }}>{op}</div>
-                  <input
-                    type="number" inputMode="numeric" placeholder={`Solde ${op} du matin`}
-                    value={morningInputs[op]}
-                    onChange={e=>setMorningInputs(p=>({...p, [op]:e.target.value}))}
-                    style={{ width:"100%", background:dark?"#1A1D2E":"#f5f5f5", border:`2px solid ${color}50`, borderRadius:12, padding:"13px 16px", color:dark?"#fff":"#111", fontSize:15, fontWeight:700, outline:"none", boxSizing:"border-box" }}
-                  />
+                  <input type="number" inputMode="numeric" placeholder={`Solde ${op} du matin`}
+                    value={morningInputs[op]} onChange={e=>setMorningInputs(p=>({...p,[op]:e.target.value}))}
+                    style={{ width:"100%", background:dark?"#1A1D2E":"#f5f5f5", border:`2px solid ${color}50`, borderRadius:12, padding:"13px 16px", color:dark?"#fff":"#111", fontSize:15, fontWeight:700, outline:"none", boxSizing:"border-box" }} />
                 </div>
               ))}
             </div>
-
-            {/* Bouton valider */}
             <button onClick={()=>{
-              // Sauvegarder cash
               const cashVal = Number(morningInputs.cash);
               if (!isNaN(cashVal) && morningInputs.cash !== "") {
                 lsSet(cashKey(todayStr(), agent.telephone), cashVal);
                 setCapitalCash(cashVal);
               }
-              // Sauvegarder floats
               const newFloats = { MTN:null, MOOV:null, Celtiis:null };
               ["MTN","MOOV","Celtiis"].forEach(op => {
                 const v = Number(morningInputs[op]);
@@ -1340,65 +2011,33 @@ _Mon Point_`;
               setFloats(newFloats);
               lsSet(floatKey(todayStr(), agent.telephone), newFloats);
               setShowMorningModal(false);
-            }}
-              style={{ width:"100%", padding:16, borderRadius:14, background:"linear-gradient(135deg,#00C896,#00A5FF)", border:"none", color:"#fff", fontWeight:900, fontSize:16, cursor:"pointer", marginBottom:10 }}>
+            }} style={{ width:"100%", padding:16, borderRadius:14, background:"linear-gradient(135deg,#00C896,#00A5FF)", border:"none", color:"#fff", fontWeight:900, fontSize:16, cursor:"pointer", marginBottom:10 }}>
               ✅ Commencer la journée
             </button>
-
-            {/* Passer */}
             <button onClick={()=>setShowMorningModal(false)}
               style={{ width:"100%", padding:12, borderRadius:12, background:"transparent", border:`1px solid ${dark?"#2A2D3E":"#ddd"}`, color:dark?"#8A8FA8":"#999", fontSize:13, cursor:"pointer" }}>
               Passer — je remplirai plus tard
             </button>
-
           </div>
         </div>
       )}
 
+      {/* ══ MODAL CAPITAL CASH ══ */}
       {showCashModal && (
-        <div style={{ position:"fixed", inset:0, background:"#000D", display:"flex", alignItems:desktop?"center":"flex-end", justifyContent:desktop?"center":"stretch", zIndex:600 }}
-          onClick={()=>setShowCashModal(false)}>
-          <div onClick={e=>e.stopPropagation()} style={{ background:T.card, borderRadius:desktop?"20px":"22px 22px 0 0", padding:"22px 20px 40px", width:desktop?420:"100%", border:`1px solid #00C89640` }}>
-            {!desktop && <div style={{ width:36, height:4, background:T.border2, borderRadius:2, margin:"0 auto 18px" }} />}
-
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }} onClick={()=>setShowCashModal(false)}>
+          <div style={{ background:dark?"#13162A":"#fff", borderRadius:20, padding:24, maxWidth:380, width:"100%", color:dark?"#fff":"#111" }} onClick={e=>e.stopPropagation()}>
             <div style={{ fontWeight:900, fontSize:18, marginBottom:4 }}>💵 Capital Cash du matin</div>
-            <div style={{ fontSize:12, color:T.sub, marginBottom:6 }}>
-              L'argent liquide total que tu as en main ce matin pour toutes tes opérations.
-            </div>
-            <div style={{ background:"#00C89612", border:"1px solid #00C89630", borderRadius:10, padding:"10px 14px", marginBottom:18, fontSize:12, color:"#00C896" }}>
-              💡 Ce montant est commun pour MTN + MOOV + CELTIIS. Les dépôts le font monter, les retraits le font descendre.
-            </div>
-
-            <div style={{ marginBottom:16 }}>
-              <div style={{ fontSize:11, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:8 }}>CAPITAL CASH (FCFA)</div>
-              <input
-                type="number"
-                placeholder="Ex : 500 000"
-                value={cashInput}
-                onChange={e=>setCashInput(e.target.value)}
-                autoFocus
-                style={{ width:"100%", background:T.input, border:`2px solid #00C896`, borderRadius:12, padding:"16px", color:T.text, fontSize:22, fontWeight:800, outline:"none", boxSizing:"border-box", textAlign:"center" }}
-              />
-            </div>
-
-            {/* Touches rapides */}
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:6, marginBottom:18 }}>
-              {[100000, 200000, 300000, 500000].map(v=>(
-                <button key={v} onClick={()=>setCashInput(String(v))}
-                  style={{ padding:"9px 0", borderRadius:9, border:`1px solid #00C89630`, background:"#00C89612", color:"#00C896", fontWeight:700, fontSize:11, cursor:"pointer" }}>
-                  {v>=1000?`${v/1000}k`:v}
-                </button>
-              ))}
-            </div>
-
+            <div style={{ fontSize:12, color:dark?"#8A8FA8":"#888", marginBottom:20 }}>L'argent liquide total en main ce matin pour toutes tes opérations.</div>
+            <input type="number" inputMode="numeric" placeholder="Ex: 300000" value={cashInput} onChange={e=>setCashInput(e.target.value)}
+              style={{ width:"100%", background:dark?"#1A1D2E":"#f5f5f5", border:"2px solid #00C896", borderRadius:12, padding:"14px 16px", color:dark?"#fff":"#111", fontSize:18, fontWeight:800, outline:"none", boxSizing:"border-box", marginBottom:16 }} />
             <button onClick={()=>{
-              if (!cashInput || isNaN(Number(cashInput))) return;
               const val = Number(cashInput);
-              setCapitalCash(val);
+              if (!cashInput||isNaN(val)) return;
               lsSet(cashKey(selectedDate, agent.telephone), val);
+              setCapitalCash(val);
               setShowCashModal(false);
-              setCashInput("");
-            }} style={{ width:"100%", padding:16, borderRadius:14, background:"linear-gradient(135deg,#00C896,#00A5FF)", border:"none", color:"#fff", fontWeight:900, fontSize:15, cursor:"pointer" }}>
+            }} disabled={!cashInput||isNaN(Number(cashInput))}
+              style={{ width:"100%", padding:16, borderRadius:14, background:!cashInput?"#1A1D2E":"linear-gradient(135deg,#00C896,#00A5FF)", border:"none", color:!cashInput?T.sub:"#fff", fontWeight:900, fontSize:15, cursor:!cashInput?"not-allowed":"pointer" }}>
               ✅ Enregistrer le capital cash
             </button>
           </div>
@@ -1412,9 +2051,9 @@ _Mon Point_`;
           <div onClick={e=>e.stopPropagation()} style={{ background:T.card, borderRadius:desktop?"20px":"22px 22px 0 0", padding:"22px 20px 40px", width:desktop?420:"100%", border:`1px solid #7B2FBE40` }}>
             {!desktop && <div style={{ width:36, height:4, background:T.border2, borderRadius:2, margin:"0 auto 18px" }} />}
 
-            <div style={{ fontWeight:900, fontSize:18, marginBottom:4 }}>💼 Solde de départ du jour</div>
+            <div style={{ fontWeight:900, fontSize:18, marginBottom:4 }}>💼 Solde de départ</div>
             <div style={{ fontSize:12, color:T.sub, marginBottom:20 }}>
-              Entre le solde électronique de départ ce matin pour chaque réseau.
+              Entre le montant d'unités disponible ce matin pour chaque opérateur.
             </div>
 
             {/* Sélecteur opérateur */}
@@ -1443,7 +2082,7 @@ _Mon Point_`;
                 </div>
 
                 <div style={{ background:`${OP_COLORS[floatEditOp]}12`, border:`1px solid ${OP_COLORS[floatEditOp]}30`, borderRadius:12, padding:"12px 16px", marginBottom:16, fontSize:12, color:T.sub }}>
-                  💡 C'est le solde électronique sur ton compte <strong style={{color:OP_COLORS[floatEditOp]}}>{floatEditOp}</strong> ce matin avant toute opération.
+                  💡 C'est le montant d'unités sur ton compte <strong style={{color:OP_COLORS[floatEditOp]}}>{floatEditOp}</strong> ce matin avant toute opération.
                 </div>
 
                 <div style={{ marginBottom:18 }}>
