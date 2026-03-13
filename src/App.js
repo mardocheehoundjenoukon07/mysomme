@@ -778,11 +778,11 @@ export default function MonPoint() {
 
   function calcCashActuel() {
     if (capitalCash === null) return null;
-    const depots   = txs.filter(t=>t.type==="depot")   .reduce((s,t)=>s+Number(t.montant),0);
-    const retraits = txs.filter(t=>t.type==="retrait") .reduce((s,t)=>s+Number(t.montant),0);
-    // Dépôt    → cash monte  (client apporte cash)
-    // Retrait  → cash descend (agent donne cash)
-    return capitalCash + depots - retraits + unites;
+    const depots   = txs.filter(t=>t.type==="depot")  .reduce((s,t)=>s+Number(t.montant),0);
+    const retraits = txs.filter(t=>t.type==="retrait").reduce((s,t)=>s+Number(t.montant),0);
+    // Dépôt  → agent reçoit cash du client  → cash monte
+    // Retrait → agent donne cash au client  → cash descend
+    return capitalCash + depots - retraits;
   }
 
   function calcFloatActuel(op) {
@@ -1055,7 +1055,6 @@ export default function MonPoint() {
                         </div>}
                         {retTotaux > 0 && <div style={{ flex:1, background:"#E6394610", border:"1px solid #E6394625", borderRadius:8, padding:"6px 10px", fontSize:11 }}>
                           <span style={{ color:T.sub }}>⬆️ Retraits </span><span style={{ color:"#E63946", fontWeight:800 }}>-{fF(retTotaux)}</span>
-                        </div>}
                         </div>}
                       </div>
 
