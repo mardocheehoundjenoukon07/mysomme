@@ -637,6 +637,7 @@ export default function MonPoint() {
   const [showPaywall,   setShowPaywall]   = useState(false);
   const [floats,        setFloats]        = useState({ MTN:null, MOOV:null, Celtiis:null });
   const [showFloatModal,setShowFloatModal]= useState(false);
+  const [retraitDistance, setRetraitDistance] = useState(false);
   const [capitalCash,   setCapitalCash]   = useState(null);
   const [cashInput,     setCashInput]     = useState("");
   const [showCashModal, setShowCashModal] = useState(false);
@@ -880,7 +881,7 @@ export default function MonPoint() {
     const localId = Date.now();
     const tx = {
       type:modal, operateur:form.operateur, montant:Number(form.montant),
-      commission:calcCom(modal, form.operateur, Number(form.montant)),
+      commission: (modal==="retrait" && retraitDistance) ? 0 : calcCom(modal, form.operateur, Number(form.montant)),
       client:form.client||"Client", telephone:form.telephone||null,
       forfait:null, heure:new Date().toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}),
       user_id:agent.telephone, localId, created_at:nowISO()
@@ -896,7 +897,7 @@ export default function MonPoint() {
     }
     const cached = lsGet(txKey(selectedDate, agent.telephone))||[];
     lsSet(txKey(selectedDate, agent.telephone), [saved||optimistic, ...cached]);
-    setSaving(false); setModal(null); setForm({});
+    setSaving(false); setModal(null); setForm({}); setRetraitDistance(false);
     setFlash(modal); setTimeout(()=>setFlash(null), 2200);
     setTimeout(()=>loadTxs(selectedDate), 1200);
   }
@@ -1686,6 +1687,24 @@ export default function MonPoint() {
 
             {modal==="retrait" && (
               <div style={{ marginBottom:16 }}>
+
+                {/* ── Toggle type retrait ── */}
+                <div style={{ display:"flex", gap:8, marginBottom:12 }}>
+                  <button onClick={()=>setRetraitDistance(false)}
+                    style={{ flex:1, padding:"11px 0", borderRadius:12, border:`2px solid ${!retraitDistance?"#00C896":T.border}`, background:!retraitDistance?"#00C89620":"transparent", color:!retraitDistance?"#00C896":T.sub, fontWeight:800, fontSize:13, cursor:"pointer" }}>
+                    ✅ Normal
+                  </button>
+                  <button onClick={()=>setRetraitDistance(true)}
+                    style={{ flex:1, padding:"11px 0", borderRadius:12, border:`2px solid ${retraitDistance?"#FFB800":T.border}`, background:retraitDistance?"#FFB80020":"transparent", color:retraitDistance?"#FFB800":T.sub, fontWeight:800, fontSize:13, cursor:"pointer" }}>
+                    📡 À distance
+                  </button>
+                </div>
+                {retraitDistance && (
+                  <div style={{ background:"#FFB80015", border:"1px solid #FFB80040", borderRadius:10, padding:"9px 14px", fontSize:12, color:"#FFB800", fontWeight:700, marginBottom:12 }}>
+                    📡 Le client confirme ailleurs — les frais vont au réseau. Frais de retrait = <strong>0 F</strong> pour toi
+                  </div>
+                )}
+
                 {form.montant && Number(form.montant)>=100 ? (()=>{
                   const tranche = getTranche(form.montant);
                   const c = form.operateur ? calcComRetrait(form.operateur, form.montant) : 0;
@@ -1707,10 +1726,17 @@ export default function MonPoint() {
                         })}
                       </div>
                       {form.operateur && (
-                        <div style={{ background:"#00C89618", border:"1px solid #00C89630", borderRadius:10, padding:"10px 14px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                          <span style={{ fontSize:12, color:T.sub }}>💰 Ta commission</span>
-                          <span style={{ fontSize:18, fontWeight:900, color:"#00C896" }}>{fF(c)}</span>
-                        </div>
+                        retraitDistance ? (
+                          <div style={{ background:"#FFB80015", border:"1px solid #FFB80030", borderRadius:10, padding:"10px 14px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                            <span style={{ fontSize:12, color:"#FFB800" }}>📡 Frais réseau (pas pour toi)</span>
+                            <span style={{ fontSize:18, fontWeight:900, color:"#FFB800", textDecoration:"line-through", opacity:0.7 }}>{fF(c)}</span>
+                          </div>
+                        ) : (
+                          <div style={{ background:"#00C89618", border:"1px solid #00C89630", borderRadius:10, padding:"10px 14px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                            <span style={{ fontSize:12, color:T.sub }}>💰 Frais de retrait</span>
+                            <span style={{ fontSize:18, fontWeight:900, color:"#00C896" }}>{fF(c)}</span>
+                          </div>
+                        )
                       )}
                     </div>
                   ) : <div style={{ background:"#E6394612", border:"1px solid #E6394635", borderRadius:12, padding:"12px 14px", fontSize:13, color:"#E63946", fontWeight:700 }}>⚠️ Montant hors grille (100 F – 2 000 000 F)</div>;
@@ -1724,7 +1750,7 @@ export default function MonPoint() {
 
             {modal==="depot" && (
               <div style={{ background:"#00C89610", border:"1px solid #00C89625", borderRadius:12, padding:"11px 14px", marginBottom:16, fontSize:12, color:"#00C896", display:"flex", alignItems:"center", gap:8 }}>
-                <span>ℹ️</span><span>Aucune commission sur les dépôts.</span>
+                <span>ℹ️</span><span>Aucune frais de retrait sur les dépôts.</span>
               </div>
             )}
 
