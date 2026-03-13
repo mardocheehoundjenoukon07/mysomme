@@ -296,6 +296,14 @@ function Inscription({ onDone, T }) {
   const [loginBlocked,  setLoginBlocked]  = useState(false);
   const w = useWindowWidth();
 
+  // Charger html2canvas
+  useEffect(() => {
+    if (window.html2canvas) return;
+    const s = document.createElement("script");
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js";
+    document.head.appendChild(s);
+  }, []);
+
   const inp = { width:"100%", background:T.input, border:`2px solid ${T.border}`, borderRadius:12, padding:"14px 16px", color:T.text, fontSize:15, outline:"none", boxSizing:"border-box", display:"block" };
 
   // ── INSCRIPTION : étape 1 → vérif numéro puis PIN ──
@@ -1837,7 +1845,7 @@ export default function MonPoint() {
         }).filter(Boolean);
         return (
           <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.85)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }} onClick={()=>setShowReport(false)}>
-            <div style={{ background:"#fff", borderRadius:20, padding:24, maxWidth:400, width:"100%", maxHeight:"90vh", overflowY:"auto", color:"#111" }} onClick={e=>e.stopPropagation()}>
+            <div id="rapport-content" style={{ background:"#fff", borderRadius:20, padding:24, maxWidth:400, width:"100%", maxHeight:"90vh", overflowY:"auto", color:"#111" }} onClick={e=>e.stopPropagation()}>
               {/* Header */}
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
                 <div>
@@ -1898,9 +1906,22 @@ export default function MonPoint() {
               })}
               </>}
 
+              {/* Capital cash */}
+              {calcCashActuel()!==null&&(
+                <div style={{ marginBottom:12 }}>
+                  <div style={{ fontWeight:900, fontSize:13, color:"#00C896", borderBottom:"2px solid #00C89630", paddingBottom:6, marginBottom:10 }}>💵 LIQUIDITÉ CASH</div>
+                  <div style={{ display:"flex", justifyContent:"space-between", padding:"6px 0", fontSize:13, borderBottom:"1px solid #eee" }}>
+                    <span>Capital départ</span><strong>{fF(capitalCash)}</strong>
+                  </div>
+                  <div style={{ display:"flex", justifyContent:"space-between", padding:"6px 0", fontSize:13, borderBottom:"1px solid #eee" }}>
+                    <span>Disponible maintenant</span><strong style={{color:calcCashActuel()<0?"#E63946":"#00C896"}}>{fF(calcCashActuel())}</strong>
+                  </div>
+                </div>
+              )}
+
               {/* Soldes float */}
               {floatLines.length>0&&<>
-              <div style={{ fontWeight:900, fontSize:13, color:"#4F8EF7", borderBottom:"2px solid #4F8EF730", paddingBottom:6, marginBottom:12, marginTop:4 }}>💼 SOLDES</div>
+              <div style={{ fontWeight:900, fontSize:13, color:"#4F8EF7", borderBottom:"2px solid #4F8EF730", paddingBottom:6, marginBottom:12, marginTop:4 }}>💼 SOLDES MOMO</div>
               {floatLines.map(({op,actuel})=>(
                 <div key={op} style={{ display:"flex", justifyContent:"space-between", padding:"6px 0", fontSize:13, borderBottom:`1px solid #eee` }}>
                   <span>{op}</span><strong>{fF(actuel)}</strong>
@@ -1912,55 +1933,36 @@ export default function MonPoint() {
               <div style={{ marginTop:16, fontSize:11, color:"#aaa", textAlign:"center" }}>Généré par Mon Point · {new Date().toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}</div>
 
               {/* Bouton partager */}
-              <button onClick={()=>{
-                const dateLabel2 = new Date(selectedDate).toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"});
-                let txt = `📊 *POINT DU JOUR — ${dateLabel2.toUpperCase()}*
-👤 ${agent.nom} | ${agent.reseau}
-
-`;
-                txt += `💵 *TRANSACTIONS ARGENT*
-`;
-                OPERATORS.forEach(op=>{
-                  const deps=txArgent.filter(t=>t.type==="depot"&&t.operateur===op);
-                  const rets=txArgent.filter(t=>t.type==="retrait"&&t.operateur===op);
-                  if(deps.length||rets.length){
-                    txt+=`
-▪️ ${op}
-`;
-                    if(deps.length) txt+=`  ⬇️ Dépôts: ${deps.length} op · ${fF(deps.reduce((s,t)=>s+Number(t.montant),0))} · comm. ${fF(deps.reduce((s,t)=>s+Number(t.commission),0))}
-`;
-                    if(rets.length) txt+=`  ⬆️ Retraits: ${rets.length} op · ${fF(rets.reduce((s,t)=>s+Number(t.montant),0))} · comm. ${fF(rets.reduce((s,t)=>s+Number(t.commission),0))}
-`;
-                  }
-                });
-                txt+=`
-💰 CA Total: ${fF(totalCA)} | ✅ Commission: ${fF(totalCom)}
-`;
-                if(txUnites.length){
-                  txt+=`
-📦 *VENTE D'UNITÉS*
-`;
-                  OPERATORS.forEach(op=>{
-                    const us=txUnites.filter(t=>t.operateur===op);
-                    if(us.length){
-                      const intC=us.filter(t=>t.forfait==="internet").length;
-                      const apC=us.filter(t=>t.forfait==="appel").length;
-                      const siC=us.filter(t=>t.forfait==="simple").length;
-                      txt+=`
-▪️ ${op}: `;
-                      if(intC) txt+=`🌐${intC} `;
-                      if(apC)  txt+=`📞${apC} `;
-                      if(siC)  txt+=`📱${siC} `;
-                      txt+=`· ${fF(us.reduce((s,t)=>s+Number(t.montant),0))}
-`;
-                    }
-                  });
+              <button onClick={async ()=>{
+                const el = document.getElementById("rapport-content");
+                if (!el || !window.html2canvas) {
+                  alert("Capture non disponible, réessaie dans 2 secondes.");
+                  return;
                 }
-                txt+=`
-_Mon Point_`;
-                window.open(`https://wa.me/?text=${encodeURIComponent(txt)}`,"_blank");
+                // Scroll en haut du rapport pour capturer tout
+                el.scrollTop = 0;
+                // Capturer toute la hauteur (pas seulement la partie visible)
+                const canvas = await window.html2canvas(el, {
+                  scale: 2,
+                  useCORS: true,
+                  backgroundColor: "#ffffff",
+                  height: el.scrollHeight,
+                  windowHeight: el.scrollHeight,
+                });
+                canvas.toBlob(async (blob) => {
+                  const file = new File([blob], "monpoint_rapport.png", { type:"image/png" });
+                  if (navigator.share && navigator.canShare && navigator.canShare({ files:[file] })) {
+                    await navigator.share({ files:[file], title:"Point du jour — Mon Point" });
+                  } else {
+                    // Fallback : ouvrir l'image pour que l'agent la partage manuellement
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url; a.download = "monpoint_rapport.png"; a.click();
+                    URL.revokeObjectURL(url);
+                  }
+                }, "image/png");
               }} style={{ width:"100%", marginTop:12, padding:14, borderRadius:14, background:"linear-gradient(135deg,#25D366,#128C7E)", border:"none", color:"#fff", fontWeight:900, fontSize:14, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
-                <span style={{fontSize:18}}>📤</span> Partager sur WhatsApp
+                <span style={{fontSize:18}}>📤</span> Envoyer sur WhatsApp (image)
               </button>
             </div>
           </div>
