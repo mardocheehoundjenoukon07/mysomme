@@ -198,6 +198,19 @@ function calcComRetrait(op, montant) {
 function calcCom(type, op, montant) { return type==="retrait" ? calcComRetrait(op,montant) : 0; }
 function getTranche(montant) { const mt=Number(montant)||0; return GRILLE_RETRAIT.find(t=>mt>=t.min&&mt<=t.max)||null; }
 
+// ─── DÉTECTION OPÉRATEUR PAR PRÉFIXE ─────────────────────────────────────────
+const PREFIXES_MTN     = ["42","46","50","51","52","53","54","56","57","59","61","62","66","67","69","90","91","96","97"];
+const PREFIXES_MOOV    = ["45","55","58","60","63","64","65","68","94","95","98","99"];
+const PREFIXES_CELTIIS = ["20","21","22","23","24","28","29","40","41","43","44","47","48","49","92","93"];
+function detectOperateur(tel) {
+  if (!tel || tel.length < 2) return null;
+  const prefix = tel.slice(0, 2);
+  if (PREFIXES_MTN.includes(prefix))     return "MTN";
+  if (PREFIXES_MOOV.includes(prefix))    return "MOOV";
+  if (PREFIXES_CELTIIS.includes(prefix)) return "Celtiis";
+  return null;
+}
+
 // ─── CONSTANTES ───────────────────────────────────────────────────────────────
 const OPERATORS  = ["MTN","MOOV","Celtiis"];
 const OP_COLORS  = { MTN:"#FFB800", MOOV:"#0066CC", Celtiis:"#E63946" };
@@ -890,7 +903,7 @@ export default function MonPoint() {
     const tx = {
       type:modal, operateur:form.operateur, montant:Number(form.montant),
       commission: (modal==="retrait" && retraitDistance) ? 0 : calcCom(modal, form.operateur, Number(form.montant)),
-      client:form.client||"Client", telephone:form.telephone||null,
+      client:form.client||"Client", telephone: form.telephone ? `01${form.telephone}` : null,
       forfait:null, heure:new Date().toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}),
       user_id:agent.telephone, localId, created_at:nowISO()
     };
@@ -1735,29 +1748,52 @@ export default function MonPoint() {
             )}
 
             <div style={{ marginBottom:16 }}>
-              <div style={{ fontSize:11, color:T.sub, marginBottom:8, fontWeight:700, letterSpacing:1 }}>OPÉRATEUR</div>
-              <div style={{ display:"flex", gap:8 }}>
-                {OPERATORS.map(op=>(
-                  <button key={op} onClick={()=>setForm(f=>({...f,operateur:op,montant:""}))}
-                    style={{ flex:1, padding:"12px 0", borderRadius:11, border:`2px solid ${form.operateur===op?OP_COLORS[op]:T.border}`, background:form.operateur===op?OP_BG[op]:"transparent", color:form.operateur===op?OP_COLORS[op]:T.sub, fontWeight:800, fontSize:14, cursor:"pointer" }}>
-                    {op}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div style={{ marginBottom:16 }}>
               <div style={{ fontSize:11, color:T.sub, marginBottom:8, fontWeight:700, letterSpacing:1 }}>MONTANT (FCFA)</div>
               <input type="number" placeholder="Ex : 5000" value={form.montant||""} onChange={e=>setForm(f=>({...f,montant:e.target.value}))}
                 style={{ width:"100%", background:T.input, border:`2px solid ${T.border}`, borderRadius:12, padding:"14px 16px", color:T.text, fontSize:20, fontWeight:700, outline:"none", boxSizing:"border-box" }} />
             </div>
 
-            <div style={{ marginBottom:22 }}>
-              <div style={{ fontSize:11, color:T.sub, marginBottom:8, fontWeight:700, letterSpacing:1 }}>NUMÉRO DE TÉLÉPHONE (optionnel)</div>
+            <div style={{ marginBottom:16 }}>
+              <div style={{ fontSize:11, color:T.sub, marginBottom:8, fontWeight:700, letterSpacing:1 }}>NUMÉRO DU CLIENT (optionnel)</div>
               <div style={{ display:"flex", gap:8 }}>
-                <div style={{ background:T.input, border:`2px solid ${T.border}`, borderRadius:12, padding:"12px 10px", color:T.text, fontSize:12, fontWeight:700, flexShrink:0 }}>🇧🇯 +229</div>
-                <input type="tel" placeholder="01 XX XX XX XX" value={form.telephone||""} onChange={e=>setForm(f=>({...f,telephone:e.target.value}))}
-                  style={{ flex:1, background:T.input, border:`2px solid ${T.border}`, borderRadius:12, padding:"12px 14px", color:T.text, fontSize:15, fontWeight:700, outline:"none", boxSizing:"border-box" }} />
+                <div style={{ background:T.input, border:`2px solid ${T.border}`, borderRadius:12, padding:"12px 10px", color:T.text, fontSize:13, fontWeight:800, flexShrink:0, letterSpacing:1 }}>🇧🇯 01</div>
+                <input
+                  type="tel"
+                  placeholder="XX XX XX XX"
+                  maxLength={8}
+                  value={form.telephone||""}
+                  onChange={e => {
+                    const val = e.target.value.replace(/\D/g,"").slice(0,8);
+                    const detected = detectOperateur(val);
+                    setForm(f=>({...f, telephone: val, operateur: detected || f.operateur}));
+                  }}
+                  style={{ flex:1, background:T.input, border:`2px solid ${form.operateur?OP_COLORS[form.operateur]:T.border}`, borderRadius:12, padding:"12px 14px", color:T.text, fontSize:15, fontWeight:700, outline:"none", boxSizing:"border-box", transition:"border-color 0.2s" }}
+                />
+              </div>
+              {form.telephone && form.telephone.length >= 2 && !form.operateur && (
+                <div style={{ fontSize:11, color:"#E63946", marginTop:6, fontWeight:700 }}>⚠️ Préfixe non reconnu — sélectionne le réseau manuellement</div>
+              )}
+              {form.telephone && form.telephone.length === 8 && form.operateur && (
+                <div style={{ fontSize:11, color:"#00C896", marginTop:6, fontWeight:700 }}>✅ 01{form.telephone} · réseau détecté automatiquement</div>
+              )}
+            </div>
+
+            <div style={{ marginBottom:22 }}>
+              <div style={{ fontSize:11, color:T.sub, marginBottom:8, fontWeight:700, letterSpacing:1 }}>
+                RÉSEAU {form.operateur ? `— ${form.telephone && form.telephone.length >= 2 ? "🔍 Détecté automatiquement" : "Sélectionné"}` : "— Sélectionne ou saisis le numéro"}
+              </div>
+              <div style={{ display:"flex", gap:8 }}>
+                {OPERATORS.map(op => {
+                  const isAuto = detectOperateur(form.telephone||"") === op;
+                  const isSel  = form.operateur === op;
+                  return (
+                    <button key={op} onClick={()=>setForm(f=>({...f,operateur:op}))}
+                      style={{ flex:1, padding:"12px 4px", borderRadius:11, border:`2px solid ${isSel?OP_COLORS[op]:T.border}`, background:isSel?OP_BG[op]:"transparent", color:isSel?OP_COLORS[op]:T.sub, fontWeight:800, fontSize:13, cursor:"pointer", position:"relative", transition:"all 0.2s" }}>
+                      {op}
+                      {isAuto && isSel && <div style={{ fontSize:8, marginTop:3, color:OP_COLORS[op], fontWeight:700 }}>🔍 Auto</div>}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
