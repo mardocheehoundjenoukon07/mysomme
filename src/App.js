@@ -146,9 +146,9 @@ function getTrialInfo(agent) {
     }
   }
 
-  // Période d'essai — limiter trial_days à 30 max pour éviter la triche
+  // Période d'essai — limiter trial_days à 60 max
   const start     = new Date(agent.trial_start || agent.created_at);
-  const rawDays   = Number(agent.trial_days) || 14;
+  const rawDays   = Number(agent.trial_days) || 60;
   const totalDays = Math.min(rawDays, 30); // MAX 30 jours — impossible de tricher
   const elapsed   = Math.floor((now - start) / (1000*60*60*24));
   const daysLeft  = totalDays - elapsed;
@@ -288,7 +288,7 @@ function PinPad({ title, subtitle, onSubmit, T, error, blocked }) {
 function Inscription({ onDone, T }) {
   const [mode,    setMode]    = useState("register");
   const [step,    setStep]    = useState(1); // 1=form, 2=pin-create, 3=pin-confirm
-  const [form,    setForm]    = useState({ nom:"", telephone:"", reseau:"MTN" });
+  const [form,    setForm]    = useState({ nom:"", telephone:"01", reseau:"MTN" });
   const [pin,     setPin]     = useState("");
   const [error,   setError]   = useState("");
   const [loading, setLoading] = useState(false);
@@ -332,7 +332,7 @@ function Inscription({ onDone, T }) {
       referral_code: form.telephone.trim(),
       referred_by: refCode || null,
       referral_count: 0,
-      trial_days: 14,
+      trial_days: 60,
       trial_extended: false,
       subscription_status: "trial",
       created_at: nowISO(), trial_start: nowISO()
@@ -423,7 +423,7 @@ function Inscription({ onDone, T }) {
             <div style={{ fontSize:11, color:T.sub, marginBottom:7, fontWeight:700, letterSpacing:1 }}>TON NUMÉRO DE TÉLÉPHONE</div>
             <div style={{ display:"flex", gap:8 }}>
               <div style={{ ...inp, flexShrink:0, width:"auto", padding:"14px 12px", fontWeight:700, fontSize:13 }}>🇧🇯 +229</div>
-              <input type="tel" placeholder="97 00 00 00" value={form.telephone} onChange={e=>setForm(f=>({...f,telephone:e.target.value.replace(/\D/g,"")}))} style={{ ...inp, flex:1 }} />
+              <input type="tel" placeholder="01 XX XX XX XX" value={form.telephone} onChange={e=>setForm(f=>({...f,telephone:e.target.value.replace(/\D/g,"")}))} style={{ ...inp, flex:1 }} />
             </div>
           </div>
           <div style={{ marginBottom:22 }}>
@@ -438,7 +438,7 @@ function Inscription({ onDone, T }) {
             </div>
           </div>
           <div style={{ background:"#00C89612", border:"1px solid #00C89630", borderRadius:12, padding:"11px 16px", marginBottom:20, fontSize:12, color:"#00C896", textAlign:"center" }}>
-            🎁 <strong>14 jours gratuits</strong> — aucune carte bancaire requise
+            🎁 <strong>2 mois gratuits</strong> — aucune carte bancaire requise
           </div>
           {getRefFromURL() && (
             <div style={{ background:"#FFB80012", border:"1px solid #FFB80030", borderRadius:12, padding:"11px 16px", marginBottom:16, fontSize:12, color:"#FFB800", textAlign:"center" }}>
@@ -457,7 +457,7 @@ function Inscription({ onDone, T }) {
             <div style={{ fontSize:11, color:T.sub, marginBottom:7, fontWeight:700, letterSpacing:1 }}>TON NUMÉRO DE TÉLÉPHONE</div>
             <div style={{ display:"flex", gap:8 }}>
               <div style={{ ...inp, flexShrink:0, width:"auto", padding:"14px 12px", fontWeight:700, fontSize:13 }}>🇧🇯 +229</div>
-              <input type="tel" placeholder="97 00 00 00" value={form.telephone} onChange={e=>setForm(f=>({...f,telephone:e.target.value.replace(/\D/g,"")}))} style={{ ...inp, flex:1 }} />
+              <input type="tel" placeholder="01 XX XX XX XX" value={form.telephone} onChange={e=>setForm(f=>({...f,telephone:e.target.value.replace(/\D/g,"")}))} style={{ ...inp, flex:1 }} />
             </div>
           </div>
           <button onClick={handleLogin} disabled={loading}
@@ -1572,7 +1572,7 @@ export default function MonPoint() {
                       {trialInfo.daysLeft} jour{trialInfo.daysLeft>1?"s":""} d'essai restant{trialInfo.daysLeft>1?"s":""}
                     </div>
                     <div style={{ fontSize:12, color:T.sub, marginTop:4 }}>
-                      {agent.trial_extended ? "✅ Tu as déjà profité du bonus parrainage (30j total)" : "Invite 1 ami → gagne +16 jours gratuits"}
+                      Profite de ton essai gratuit !
                     </div>
                   </div>
                 )}
@@ -1594,34 +1594,6 @@ export default function MonPoint() {
                 )}
               </div>
 
-              {/* Parrainage */}
-              <div style={{ background:T.card, borderRadius:18, padding:desktop?22:18, marginBottom:14, border:"1px solid #FFB80030" }}>
-                <div style={{ fontWeight:800, fontSize:14, marginBottom:14 }}>🎁 Parrainage</div>
-                <div style={{ background:"#FFB80012", border:"1px solid #FFB80030", borderRadius:12, padding:"14px 16px", marginBottom:14 }}>
-                  <div style={{ fontSize:13, color:"#FFB800", fontWeight:700, marginBottom:6 }}>
-                    {agent.trial_extended
-                      ? `✅ Bonus utilisé — ${agent.referral_count||0} ami(s) inscrit(s)`
-                      : `👥 ${agent.referral_count||0}/1 ami inscrit — invite 1 ami pour +16 jours !`
-                    }
-                  </div>
-                  <div style={{ fontSize:11, color:T.sub }}>
-                    Partage ton lien. Dès qu'un ami s'inscrit et utilise l'app, tu gagnes automatiquement <strong style={{color:"#FFB800"}}>16 jours gratuits</strong>.
-                  </div>
-                </div>
-                <div style={{ display:"flex", gap:8 }}>
-                  <div style={{ flex:1, background:T.hero, borderRadius:10, padding:"10px 14px", fontSize:11, color:T.sub, wordBreak:"break-all" }}>
-                    {getReferralLink(agent.telephone)}
-                  </div>
-                  <button onClick={()=>{ navigator.clipboard?.writeText(getReferralLink(agent.telephone)); setFlash("depot"); setTimeout(()=>setFlash(null),2000); }}
-                    style={{ flexShrink:0, padding:"10px 16px", borderRadius:10, background:"#FFB80020", border:"1px solid #FFB80050", color:"#FFB800", fontWeight:700, fontSize:12, cursor:"pointer" }}>
-                    📋 Copier
-                  </button>
-                </div>
-                <button onClick={()=>{ const url = getReferralLink(agent.telephone); const text = `📱 J'utilise Mon Point pour gérer mon point MoMo — c'est trop pratique ! Essaie gratuitement : ${url}`; window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank"); }}
-                  style={{ width:"100%", marginTop:10, padding:12, borderRadius:12, background:"linear-gradient(135deg,#25D366,#128C7E)", border:"none", color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
-                  <span>📤</span> Partager via WhatsApp
-                </button>
-              </div>
 
               {/* Données offline */}
               <div style={{ background:T.card, borderRadius:18, padding:desktop?22:18, marginBottom:14, border:`1px solid ${T.border}` }}>
@@ -1784,7 +1756,7 @@ export default function MonPoint() {
               <div style={{ fontSize:11, color:T.sub, marginBottom:8, fontWeight:700, letterSpacing:1 }}>NUMÉRO DE TÉLÉPHONE (optionnel)</div>
               <div style={{ display:"flex", gap:8 }}>
                 <div style={{ background:T.input, border:`2px solid ${T.border}`, borderRadius:12, padding:"12px 10px", color:T.text, fontSize:12, fontWeight:700, flexShrink:0 }}>🇧🇯 +229</div>
-                <input type="tel" placeholder="97 00 00 00" value={form.telephone||""} onChange={e=>setForm(f=>({...f,telephone:e.target.value}))}
+                <input type="tel" placeholder="01 XX XX XX XX" value={form.telephone||""} onChange={e=>setForm(f=>({...f,telephone:e.target.value}))}
                   style={{ flex:1, background:T.input, border:`2px solid ${T.border}`, borderRadius:12, padding:"12px 14px", color:T.text, fontSize:15, fontWeight:700, outline:"none", boxSizing:"border-box" }} />
               </div>
             </div>
