@@ -14,6 +14,37 @@ function HA(agentId) {
   };
 }
 
+// ─── OTP VERIFICATION via Supabase Edge Functions ─────────────────────────────
+async function sendOTP(telephone) {
+  try {
+    const res = await fetch(`${SUPA_URL}/functions/v1/send-otp`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${SUPA_KEY}` },
+      body: JSON.stringify({ telephone })
+    });
+    const data = await res.json();
+    if (!res.ok) return { success: false, error: data.error || "Échec envoi SMS" };
+    return { success: true };
+  } catch {
+    return { success: false, error: "Pas de connexion. Vérifie ton réseau." };
+  }
+}
+async function verifyOTP(telephone, code) {
+  try {
+    const res = await fetch(`${SUPA_URL}/functions/v1/verify-otp`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${SUPA_KEY}` },
+      body: JSON.stringify({ telephone, code })
+    });
+    const data = await res.json();
+    if (!res.ok) return { success: false, error: data.error || "Code incorrect" };
+    return { success: true };
+  } catch {
+    return { success: false, error: "Pas de connexion. Vérifie ton réseau." };
+  }
+}
+
+
 // ─── CACHE LOCAL ──────────────────────────────────────────────────────────────
 function lsGet(k)    { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : null; } catch { return null; } }
 function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
@@ -146,10 +177,10 @@ function getTrialInfo(agent) {
     }
   }
 
-  // Période d'essai — limiter trial_days à 60 max
+  // Période d'essai — 1 an gratuit (stratégie d'adoption)
   const start     = new Date(agent.trial_start || agent.created_at);
-  const rawDays   = Number(agent.trial_days) || 60;
-  const totalDays = Math.min(rawDays, 30); // MAX 30 jours — impossible de tricher
+  const rawDays   = Number(agent.trial_days) || 365;
+  const totalDays = Math.min(rawDays, 365); // MAX 365 jours = 1 an — impossible de tricher
   const elapsed   = Math.floor((now - start) / (1000*60*60*24));
   const daysLeft  = totalDays - elapsed;
 
@@ -300,11 +331,14 @@ function PinPad({ title, subtitle, onSubmit, T, error, blocked }) {
 // ─── COMPOSANT INSCRIPTION / CONNEXION ───────────────────────────────────────
 function Inscription({ onDone, T }) {
   const [mode,    setMode]    = useState("register");
-  const [step,    setStep]    = useState(1); // 1=form, 2=pin-create, 3=pin-confirm
-  const [form,    setForm]    = useState({ nom:"", telephone:"01", reseau:"MTN" });
+  // steps: 1=form, 1.5=otp-saisie, 2=pin-create, 3=pin-confirm, 10=login-pin
+  const [step,    setStep]    = useState(1);
+  const [form,    setForm]    = useState({ nom:"", telephone:"", reseau:"" });
   const [pin,     setPin]     = useState("");
   const [error,   setError]   = useState("");
   const [loading, setLoading] = useState(false);
+  const [otpCode, setOtpCode] = useState("");        // code saisi par l'agent
+  const [otpResend, setOtpResend] = useState(false); // montrer le bouton "renvoyer"
   const [loginAttempts, setLoginAttempts] = useState(0);
   const [loginBlocked,  setLoginBlocked]  = useState(false);
   const w = useWindowWidth();
@@ -317,17 +351,53 @@ function Inscription({ onDone, T }) {
     document.head.appendChild(s);
   }, []);
 
+  // Minuterie resend OTP (30 secondes)
+  useEffect(() => {
+    if (step !== 1.5) return;
+    setOtpResend(false);
+    const t = setTimeout(() => setOtpResend(true), 30000);
+    return () => clearTimeout(t);
+  }, [step]);
+
   const inp = { width:"100%", background:T.input, border:`2px solid ${T.border}`, borderRadius:12, padding:"14px 16px", color:T.text, fontSize:15, outline:"none", boxSizing:"border-box", display:"block" };
 
-  // ── INSCRIPTION : étape 1 → vérif numéro puis PIN ──
+  // ── INSCRIPTION : étape 1 → envoyer OTP ──────────────────────────────────
   async function handleRegisterStep1() {
     if (!form.nom.trim()) { setError("Entre ton nom complet"); return; }
-    if (!form.telephone.trim() || form.telephone.length < 8) { setError("Entre un numéro valide (8 chiffres)"); return; }
+    if (!form.telephone || form.telephone.length !== 8) { setError("Entre les 8 chiffres de ton numéro"); return; }
+    if (!form.reseau) { setError("Choisis ton réseau principal"); return; }
+    const telComplet = "01" + form.telephone;
     setLoading(true); setError("");
-    const existing = await fetchAgent(form.telephone);
+    // Vérifier si le numéro existe déjà
+    const existing = await fetchAgent(telComplet);
+    if (existing) { setLoading(false); setError("Ce numéro a déjà un compte. Connecte-toi."); return; }
+    // Envoyer le SMS OTP
+    const result = await sendOTP(telComplet);
     setLoading(false);
-    if (existing) { setError("Ce numéro a déjà un compte. Connecte-toi."); return; }
-    setStep(2);
+    if (!result.success) { setError(result.error); return; }
+    setStep(1.5); // Passer à l'écran de saisie OTP
+  }
+
+  // ── INSCRIPTION : vérifier l'OTP ─────────────────────────────────────────
+  async function handleVerifyOTP() {
+    if (!otpCode || otpCode.length !== 6) { setError("Entre le code à 6 chiffres reçu par SMS"); return; }
+    const telComplet = "01" + form.telephone;
+    setLoading(true); setError("");
+    const result = await verifyOTP(telComplet, otpCode);
+    setLoading(false);
+    if (!result.success) { setError(result.error); return; }
+    setStep(2); // OTP validé → créer le PIN
+  }
+
+  // ── INSCRIPTION : renvoyer l'OTP ─────────────────────────────────────────
+  async function handleResendOTP() {
+    const telComplet = "01" + form.telephone;
+    setLoading(true); setError(""); setOtpCode("");
+    const result = await sendOTP(telComplet);
+    setLoading(false);
+    if (!result.success) { setError(result.error); return; }
+    setOtpResend(false);
+    setTimeout(() => setOtpResend(true), 30000);
   }
 
   // ── INSCRIPTION : création PIN ──
@@ -339,13 +409,14 @@ function Inscription({ onDone, T }) {
     setLoading(true);
     const refCode = getRefFromURL();
     const pinHash = await hashPin(p);
+    const telComplet = "01" + form.telephone;
     const agent = {
-      nom: form.nom.trim(), telephone: form.telephone.trim(),
+      nom: form.nom.trim(), telephone: telComplet,
       reseau: form.reseau, pin: pinHash,
-      referral_code: form.telephone.trim(),
+      referral_code: telComplet,
       referred_by: refCode || null,
       referral_count: 0,
-      trial_days: 60,
+      trial_days: 365,
       trial_extended: false,
       subscription_status: "trial",
       created_at: nowISO(), trial_start: nowISO()
@@ -361,8 +432,9 @@ function Inscription({ onDone, T }) {
   // ── CONNEXION ──
   async function handleLogin() {
     if (!form.telephone) { setError("Entre ton numéro"); return; }
+    const telComplet = form.telephone.startsWith("01") ? form.telephone : "01" + form.telephone;
     setLoading(true); setError("");
-    const agent = await fetchAgent(form.telephone);
+    const agent = await fetchAgent(telComplet);
     setLoading(false);
     if (!agent) { setError("Numéro introuvable. Crée un compte."); return; }
     lsSet("ms_agent", agent);
@@ -387,6 +459,52 @@ function Inscription({ onDone, T }) {
       }
     }
   }
+
+  // ── Écran OTP ──────────────────────────────────────────────────────────────
+  if (step===1.5) return (
+    <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", minHeight:"100vh", padding:24, background:T.bg }}>
+      <div style={{ width:"100%", maxWidth:380 }}>
+        <div style={{ textAlign:"center", marginBottom:32 }}>
+          <div style={{ fontSize:48, marginBottom:16 }}>📱</div>
+          <div style={{ fontWeight:900, fontSize:22, color:T.text, marginBottom:8 }}>Vérifie ton numéro</div>
+          <div style={{ fontSize:13, color:T.sub, lineHeight:1.6 }}>
+            Un SMS avec un code à 6 chiffres a été envoyé au<br/>
+            <strong style={{ color:T.text }}>+229 01{form.telephone}</strong>
+          </div>
+        </div>
+        <div style={{ marginBottom:16 }}>
+          <div style={{ fontSize:11, color:T.sub, marginBottom:8, fontWeight:700, letterSpacing:1 }}>CODE À 6 CHIFFRES</div>
+          <input
+            type="tel"
+            placeholder="_ _ _ _ _ _"
+            maxLength={6}
+            value={otpCode}
+            onChange={e => { setOtpCode(e.target.value.replace(/\D/g,"").slice(0,6)); setError(""); }}
+            autoFocus
+            style={{ width:"100%", background:T.input, border:`2px solid ${otpCode.length===6?"#00C896":T.border}`, borderRadius:12, padding:"18px 16px", color:T.text, fontSize:28, fontWeight:800, outline:"none", boxSizing:"border-box", textAlign:"center", letterSpacing:12, transition:"border-color 0.2s" }}
+          />
+        </div>
+        {error && <div style={{ background:"#E6394618", border:"1px solid #E6394640", color:"#E63946", borderRadius:10, padding:"10px 14px", fontSize:12, fontWeight:700, marginBottom:14, textAlign:"center" }}>{error}</div>}
+        <button onClick={handleVerifyOTP} disabled={loading || otpCode.length !== 6}
+          style={{ width:"100%", padding:17, borderRadius:14, background: otpCode.length===6 ? "linear-gradient(135deg,#00C896,#00A5FF)" : T.hero, border:"none", color: otpCode.length===6 ? "#fff" : T.sub, fontWeight:900, fontSize:16, cursor: otpCode.length===6 && !loading ? "pointer" : "not-allowed", marginBottom:14 }}>
+          {loading ? "⏳ Vérification..." : "✅ Confirmer le code"}
+        </button>
+        <div style={{ textAlign:"center" }}>
+          {otpResend ? (
+            <button onClick={handleResendOTP} disabled={loading}
+              style={{ background:"none", border:"none", color:"#00C896", fontSize:13, fontWeight:700, cursor:"pointer", textDecoration:"underline" }}>
+              Renvoyer le SMS
+            </button>
+          ) : (
+            <div style={{ fontSize:12, color:T.sub }}>Pas reçu ? Tu pourras renvoyer dans 30 secondes</div>
+          )}
+        </div>
+        <button onClick={()=>{ setStep(1); setOtpCode(""); setError(""); }} style={{ width:"100%", marginTop:16, padding:12, borderRadius:12, background:"transparent", border:`1px solid ${T.border}`, color:T.sub, fontSize:13, cursor:"pointer" }}>
+          ← Changer de numéro
+        </button>
+      </div>
+    </div>
+  );
 
   // ── Écrans PIN ──
   if (step===2) return <PinPad title="Crée ton PIN 🔐" subtitle="4 chiffres pour sécuriser ton compte" onSubmit={handlePinCreate} T={T} />;
@@ -432,26 +550,43 @@ function Inscription({ onDone, T }) {
             <div style={{ fontSize:11, color:T.sub, marginBottom:7, fontWeight:700, letterSpacing:1 }}>TON NOM COMPLET</div>
             <input type="text" placeholder="Ex : Koffi Mensah" value={form.nom} onChange={e=>setForm(f=>({...f,nom:e.target.value}))} style={inp} autoFocus />
           </div>
-          <div style={{ marginBottom:20 }}>
+          <div style={{ marginBottom:16 }}>
             <div style={{ fontSize:11, color:T.sub, marginBottom:7, fontWeight:700, letterSpacing:1 }}>TON NUMÉRO DE TÉLÉPHONE</div>
             <div style={{ display:"flex", gap:8 }}>
-              <div style={{ ...inp, flexShrink:0, width:"auto", padding:"14px 12px", fontWeight:700, fontSize:13 }}>🇧🇯 +229</div>
-              <input type="tel" placeholder="01 XX XX XX XX" value={form.telephone} onChange={e=>setForm(f=>({...f,telephone:e.target.value.replace(/\D/g,"")}))} style={{ ...inp, flex:1 }} />
+              <div style={{ ...inp, flexShrink:0, width:"auto", padding:"14px 12px", fontWeight:800, fontSize:13, letterSpacing:1 }}>🇧🇯 01</div>
+              <input type="tel" placeholder="XX XX XX XX" maxLength={8} value={form.telephone}
+                onChange={e => {
+                  const val = e.target.value.replace(/\D/g,"").slice(0,8);
+                  const detected = detectOperateur(val);
+                  setForm(f=>({...f, telephone:val, reseau: detected || f.reseau || ""}));
+                }}
+                style={{ ...inp, flex:1, border:`2px solid ${form.reseau?OP_COLORS[form.reseau]:T.border}`, transition:"border-color 0.2s" }} />
             </div>
+            {form.telephone.length===8 && form.reseau && (
+              <div style={{ fontSize:11, color:"#00C896", marginTop:5, fontWeight:700 }}>
+                ✅ +229 01{form.telephone} · {form.reseau} détecté
+              </div>
+            )}
+            {form.telephone.length>=2 && !form.reseau && (
+              <div style={{ fontSize:11, color:"#FFB800", marginTop:5, fontWeight:700 }}>⚠️ Choisis ton réseau ci-dessous</div>
+            )}
           </div>
           <div style={{ marginBottom:22 }}>
-            <div style={{ fontSize:11, color:T.sub, marginBottom:7, fontWeight:700, letterSpacing:1 }}>TON RÉSEAU PRINCIPAL</div>
+            <div style={{ fontSize:11, color:T.sub, marginBottom:7, fontWeight:700, letterSpacing:1 }}>
+              TON RÉSEAU {form.reseau && form.telephone.length>=2 ? "— 🔍 Détecté automatiquement" : "PRINCIPAL"}
+            </div>
             <div style={{ display:"flex", gap:8 }}>
               {OPERATORS.map(op=>(
                 <button key={op} onClick={()=>setForm(f=>({...f,reseau:op}))}
-                  style={{ flex:1, padding:"12px 0", borderRadius:11, border:`2px solid ${form.reseau===op?OP_COLORS[op]:T.border}`, background:form.reseau===op?OP_BG_D[op]:"transparent", color:form.reseau===op?OP_COLORS[op]:T.sub, fontWeight:800, fontSize:13, cursor:"pointer" }}>
+                  style={{ flex:1, padding:"12px 0", borderRadius:11, border:`2px solid ${form.reseau===op?OP_COLORS[op]:T.border}`, background:form.reseau===op?OP_BG_D[op]:"transparent", color:form.reseau===op?OP_COLORS[op]:T.sub, fontWeight:800, fontSize:13, cursor:"pointer", transition:"all 0.2s" }}>
                   {op}
+                  {form.reseau===op && form.telephone.length>=2 && <div style={{fontSize:8,marginTop:2,color:OP_COLORS[op]}}>🔍 Auto</div>}
                 </button>
               ))}
             </div>
           </div>
-          <div style={{ background:"#00C89612", border:"1px solid #00C89630", borderRadius:12, padding:"11px 16px", marginBottom:20, fontSize:12, color:"#00C896", textAlign:"center" }}>
-            🎁 <strong>2 mois gratuits</strong> — aucune carte bancaire requise
+          <div style={{ background:"#00C89612", border:"1px solid #00C89630", borderRadius:12, padding:"13px 16px", marginBottom:20, fontSize:12, color:"#00C896", textAlign:"center" }}>
+            🎁 <strong>1 an gratuit</strong> — aucune carte bancaire requise
           </div>
           {getRefFromURL() && (
             <div style={{ background:"#FFB80012", border:"1px solid #FFB80030", borderRadius:12, padding:"11px 16px", marginBottom:16, fontSize:12, color:"#FFB800", textAlign:"center" }}>
@@ -460,7 +595,7 @@ function Inscription({ onDone, T }) {
           )}
           <button onClick={handleRegisterStep1} disabled={loading}
             style={{ width:"100%", padding:17, borderRadius:14, background:"linear-gradient(135deg,#00C896,#00A5FF)", border:"none", color:"#fff", fontWeight:900, fontSize:16, cursor:loading?"not-allowed":"pointer", opacity:loading?0.7:1 }}>
-            {loading?"⏳ Vérification...":"Créer mon compte →"}
+            {loading?"⏳ Envoi du SMS...":"Recevoir mon code SMS →"}
           </button>
         </>)}
 
@@ -469,8 +604,10 @@ function Inscription({ onDone, T }) {
           <div style={{ marginBottom:22 }}>
             <div style={{ fontSize:11, color:T.sub, marginBottom:7, fontWeight:700, letterSpacing:1 }}>TON NUMÉRO DE TÉLÉPHONE</div>
             <div style={{ display:"flex", gap:8 }}>
-              <div style={{ ...inp, flexShrink:0, width:"auto", padding:"14px 12px", fontWeight:700, fontSize:13 }}>🇧🇯 +229</div>
-              <input type="tel" placeholder="01 XX XX XX XX" value={form.telephone} onChange={e=>setForm(f=>({...f,telephone:e.target.value.replace(/\D/g,"")}))} style={{ ...inp, flex:1 }} />
+              <div style={{ ...inp, flexShrink:0, width:"auto", padding:"14px 12px", fontWeight:800, fontSize:13, letterSpacing:1 }}>🇧🇯 01</div>
+              <input type="tel" placeholder="XX XX XX XX" maxLength={8} value={form.telephone}
+                onChange={e=>setForm(f=>({...f,telephone:e.target.value.replace(/\D/g,"").slice(0,8)}))}
+                style={{ ...inp, flex:1 }} />
             </div>
           </div>
           <button onClick={handleLogin} disabled={loading}
