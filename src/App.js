@@ -786,6 +786,8 @@ export default function MonPoint() {
   const [showReport,    setShowReport]    = useState(false);
   const [confirm,       setConfirm]       = useState(null);
   const [confirmLogout, setConfirmLogout] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [selectedDate,  setSelectedDate]  = useState(todayStr());
   const [calMonth,      setCalMonth]      = useState(new Date().getMonth()+1);
   const [calYear,       setCalYear]       = useState(new Date().getFullYear());
@@ -1002,6 +1004,25 @@ export default function MonPoint() {
   function handleLogout() {
     lsDel("ms_agent");
     setAgent(null); setLocked(false); setTxs([]); setTab("accueil"); setConfirmLogout(false);
+  }
+
+  async function handleDeleteAccount() {
+    setDeleting(true);
+    try {
+      // Supprimer toutes les transactions de l'agent
+      await fetch(`${SUPA_URL}/rest/v1/transactions?user_id=eq.${agent.telephone}`, { method:"DELETE", headers:HA(agent.telephone) });
+      // Supprimer l'agent
+      await fetch(`${SUPA_URL}/rest/v1/agents?telephone=eq.${agent.telephone}`, { method:"DELETE", headers:HA(agent.telephone) });
+      // Nettoyer le cache local
+      lsDel("ms_agent");
+      lsDel(pendKey(agent.telephone));
+      // Réinitialiser l'app
+      setAgent(null); setLocked(false); setTxs([]); setTab("accueil");
+      setConfirmDelete(false);
+    } catch(e) {
+      console.error(e);
+    }
+    setDeleting(false);
   }
 
   const loadTxs = useCallback(async (date) => {
@@ -1769,8 +1790,11 @@ export default function MonPoint() {
                 </div>
               </div>
 
-              <button onClick={()=>setConfirmLogout(true)} style={{ width:"100%", padding:17, borderRadius:15, background:"#E6394618", border:"2px solid #E6394640", color:"#E63946", fontWeight:800, fontSize:15, cursor:"pointer" }}>
+              <button onClick={()=>setConfirmLogout(true)} style={{ width:"100%", padding:17, borderRadius:15, background:"#E6394618", border:"2px solid #E6394640", color:"#E63946", fontWeight:800, fontSize:15, cursor:"pointer", marginBottom:10 }}>
                 🔓 Se déconnecter
+              </button>
+              <button onClick={()=>setConfirmDelete(true)} style={{ width:"100%", padding:14, borderRadius:15, background:"transparent", border:"1px solid #E6394640", color:"#E63946", fontWeight:700, fontSize:13, cursor:"pointer", opacity:0.7 }}>
+                🗑️ Supprimer mon compte
               </button>
             </div>
           )}
@@ -2137,6 +2161,32 @@ export default function MonPoint() {
             <div style={{ display:"flex", gap:10 }}>
               <button onClick={()=>setConfirmLogout(false)} style={{ flex:1, padding:14, borderRadius:12, background:T.hero, border:`1px solid ${T.border2}`, color:T.text, fontWeight:700, cursor:"pointer" }}>Annuler</button>
               <button onClick={handleLogout} style={{ flex:1, padding:14, borderRadius:12, background:"#E63946", border:"none", color:"#fff", fontWeight:800, cursor:"pointer" }}>Déconnexion</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══ CONFIRM SUPPRESSION COMPTE ══════════════════════════════ */}
+      {confirmDelete && (
+        <div style={{ position:"fixed", inset:0, background:"#000D", display:"flex", alignItems:"center", justifyContent:"center", zIndex:500, padding:24 }}>
+          <div style={{ background:T.card, borderRadius:22, padding:30, width:"100%", maxWidth:340, border:`1px solid #E6394640`, textAlign:"center" }}>
+            <div style={{ fontSize:44, marginBottom:14 }}>⚠️</div>
+            <div style={{ fontSize:19, fontWeight:900, marginBottom:8, color:"#E63946" }}>Supprimer le compte ?</div>
+            <div style={{ fontSize:13, color:T.sub, marginBottom:8, lineHeight:1.6 }}>
+              Cette action est <strong style={{color:"#E63946"}}>irréversible</strong>.<br/>
+              Toutes tes opérations, statistiques et données seront définitivement supprimées.
+            </div>
+            <div style={{ background:"#E6394612", border:"1px solid #E6394630", borderRadius:10, padding:"10px 14px", marginBottom:24, fontSize:12, color:"#E63946", fontWeight:700 }}>
+              🗑️ Compte : {agent.telephone} · {agent.nom}
+            </div>
+            <div style={{ display:"flex", gap:10 }}>
+              <button onClick={()=>setConfirmDelete(false)} disabled={deleting} style={{ flex:1, padding:14, borderRadius:12, background:T.hero, border:`1px solid ${T.border2}`, color:T.text, fontWeight:700, cursor:"pointer" }}>
+                Annuler
+              </button>
+              <button onClick={handleDeleteAccount} disabled={deleting}
+                style={{ flex:1, padding:14, borderRadius:12, background:"#E63946", border:"none", color:"#fff", fontWeight:800, cursor:deleting?"not-allowed":"pointer", opacity:deleting?0.7:1 }}>
+                {deleting ? "⏳ Suppression..." : "Supprimer définitivement"}
+              </button>
             </div>
           </div>
         </div>
