@@ -288,6 +288,13 @@ export default function CashPoint() {
   const [dark, setDark] = useState(true);
   const T = dark ? DARK : LIGHT;
 
+  // ── Fix fond blanc — appliqué immédiatement sur html/body ──────────────────
+  useEffect(() => {
+    const bg = dark ? "#080A11" : "#F0F2F8";
+    document.documentElement.style.cssText = `margin:0!important;padding:0!important;background:${bg}!important;width:100%!important;`;
+    document.body.style.cssText           = `margin:0!important;padding:0!important;background:${bg}!important;width:100%!important;max-width:100%!important;overflow-x:hidden!important;`;
+  }, [dark]);
+
   // Auth state
   const [userType, setUserType] = useState(null); // "patron" | "agent"
   const [patron, setPatron]     = useState(lsGet("cp_patron"));
@@ -417,8 +424,8 @@ export default function CashPoint() {
   const isAgent  = !!agent;
 
   return (
-    <div style={{ background:T.bg, minHeight:"100vh", width:"100vw", maxWidth:"100%", margin:0, padding:0, color:T.text, fontFamily:"'Segoe UI',system-ui,sans-serif", overflowX:"hidden" }}>
-      <style>{`*,*::before,*::after{box-sizing:border-box!important;}html{margin:0!important;padding:0!important;background:${T.bg}!important;}body{margin:0!important;padding:0!important;width:100vw!important;max-width:100%!important;overflow-x:hidden!important;background:${T.bg}!important;}#root,[data-reactroot],body>div{margin:0!important;padding:0!important;width:100%!important;max-width:100%!important;}button{-webkit-tap-highlight-color:transparent;outline:none;}input{outline:none;}`}</style>
+    <div style={{ background:T.bg, minHeight:"100vh", color:T.text, fontFamily:"'Segoe UI',system-ui,sans-serif" }}>
+      <style>{`*{box-sizing:border-box;margin:0;padding:0;}body{background:${T.bg}!important;}button{-webkit-tap-highlight-color:transparent;outline:none;}input{outline:none;}`}</style>
 
       {/* FLASH */}
       {flash && (
