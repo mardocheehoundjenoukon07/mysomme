@@ -121,8 +121,10 @@ async function fetchPatron(tel) {
 async function savePatron(p) {
   try {
     const r = await fetch(`${SUPA_URL}/rest/v1/patrons`, { method:"POST", headers: H(), body: JSON.stringify(p) });
-    return r.ok ? (await r.json())[0] : null;
-  } catch { return null; }
+    if (r.ok) return { success:true, data:(await r.json())[0] };
+    const err = await r.json().catch(()=>({}));
+    return { success:false, error: err.message||err.details||`Erreur ${r.status}` };
+  } catch(e) { return { success:false, error: e.message||"Connexion impossible" }; }
 }
 async function fetchAgents(patronId) {
   try {
@@ -170,6 +172,12 @@ async function markInviteUsed(code, agentId) {
 async function fetchTxs(agentId, dateStr) {
   try {
     const r = await fetch(`${SUPA_URL}/rest/v1/cashpoint_transactions?agent_id=eq.${agentId}&created_at=gte.${dateStr}T00:00:00+01:00&created_at=lte.${dateStr}T23:59:59+01:00&order=created_at.desc`, { headers: H() });
+    return r.ok ? await r.json() : [];
+  } catch { return []; }
+}
+async function fetchAllFloatsForPatron(patronId, dateStr) {
+  try {
+    const r = await fetch(`${SUPA_URL}/rest/v1/cashpoint_floats?patron_id=eq.${patronId}&date=eq.${dateStr}&select=*`, { headers: H() });
     return r.ok ? await r.json() : [];
   } catch { return []; }
 }
@@ -288,11 +296,11 @@ export default function CashPoint() {
   const [dark, setDark] = useState(true);
   const T = dark ? DARK : LIGHT;
 
-  // ── Fix fond blanc — appliqué immédiatement sur html/body ──────────────────
+  // ── Fix fond blanc ──────────────────────────────────────────────────────────
   useEffect(() => {
-    const bg = dark ? "#080A11" : "#F0F2F8";
+    const bg = dark ? "#06080F" : "#F0F2F8";
     document.documentElement.style.cssText = `margin:0!important;padding:0!important;background:${bg}!important;width:100%!important;`;
-    document.body.style.cssText           = `margin:0!important;padding:0!important;background:${bg}!important;width:100%!important;max-width:100%!important;overflow-x:hidden!important;`;
+    document.body.style.cssText = `margin:0!important;padding:0!important;background:${bg}!important;width:100vw!important;max-width:100%!important;overflow-x:hidden!important;`;
   }, [dark]);
 
   // Auth state
@@ -306,9 +314,11 @@ export default function CashPoint() {
   const [loading, setLoading]   = useState(false);
 
   // Dashboard data
-  const [agents, setAgents]     = useState([]);
-  const [allTxs, setAllTxs]     = useState([]);
-  const [agentTxs, setAgentTxs] = useState([]);
+  const [agents, setAgents]         = useState([]);
+  const [allTxs, setAllTxs]         = useState([]);
+  const [allFloats, setAllFloats]   = useState([]);
+  const [selectedAgent, setSelectedAgent] = useState(null); // agent detail view
+  const [agentTxs, setAgentTxs]     = useState([]);
   const [agentFloat, setAgentFloat] = useState(null);
   const [selectedDate, setSelectedDate] = useState(todayStr());
 
@@ -339,8 +349,9 @@ export default function CashPoint() {
     setAgents(ag);
     const txs = await fetchAllTxsForPatron(patron.id, selectedDate);
     setAllTxs(txs);
+    const fls = await fetchAllFloatsForPatron(patron.id, selectedDate);
+    setAllFloats(fls);
     setLoading(false);
-    // Vérifier float du matin pour les agents
   }
 
   async function loadAgentData() {
@@ -406,13 +417,32 @@ export default function CashPoint() {
 
   // ── CALCULS DASHBOARD PATRON ─────────────────────────────────────────────────
   function getAgentStats(agentId) {
-    const txs = allTxs.filter(t => t.agent_id === agentId);
+    const txs   = allTxs.filter(t => t.agent_id === agentId);
+    const fl    = allFloats.find(f => f.agent_id === agentId) || null;
+    const deps  = txs.filter(t=>t.type==="depot") .reduce((s,t)=>s+Number(t.montant),0);
+    const rets  = txs.filter(t=>t.type==="retrait").reduce((s,t)=>s+Number(t.montant),0);
+    const frais = txs.filter(t=>t.type==="retrait").reduce((s,t)=>s+Number(t.commission),0);
+
+    // Cash actuel = cash départ + dépôts reçus - retraits donnés
+    const cashDepart  = fl ? Number(fl.cash||0) : null;
+    const cashActuel  = cashDepart !== null ? cashDepart + deps - rets : null;
+
+    // Soldes MoMo actuels = solde départ - dépôts envoyés + retraits reçus
+    const momoDepart  = fl ? (Number(fl.float_mtn||0) + Number(fl.float_moov||0) + Number(fl.float_celtiis||0)) : null;
+    const mtnActuel   = fl ? Number(fl.float_mtn||0)     - txs.filter(t=>t.operateur==="MTN"    &&t.type==="depot").reduce((s,t)=>s+Number(t.montant),0) + txs.filter(t=>t.operateur==="MTN"    &&t.type==="retrait").reduce((s,t)=>s+Number(t.montant),0) : null;
+    const moovActuel  = fl ? Number(fl.float_moov||0)    - txs.filter(t=>t.operateur==="MOOV"   &&t.type==="depot").reduce((s,t)=>s+Number(t.montant),0) + txs.filter(t=>t.operateur==="MOOV"   &&t.type==="retrait").reduce((s,t)=>s+Number(t.montant),0) : null;
+    const celtiisActuel = fl ? Number(fl.float_celtiis||0) - txs.filter(t=>t.operateur==="Celtiis"&&t.type==="depot").reduce((s,t)=>s+Number(t.montant),0) + txs.filter(t=>t.operateur==="Celtiis"&&t.type==="retrait").reduce((s,t)=>s+Number(t.montant),0) : null;
+    const momoActuel  = (mtnActuel||0) + (moovActuel||0) + (celtiisActuel||0);
+
+    // Point total = cash actuel + total MoMo actuel (sans frais)
+    const pointTotal  = cashActuel !== null ? cashActuel + momoActuel : null;
+
     return {
-      depots:    txs.filter(t=>t.type==="depot").reduce((s,t)=>s+Number(t.montant),0),
-      retraits:  txs.filter(t=>t.type==="retrait").reduce((s,t)=>s+Number(t.montant),0),
-      commissions: txs.filter(t=>t.type==="retrait").reduce((s,t)=>s+Number(t.commission),0),
-      nbOps:     txs.length,
-      lastOp:    txs[0]?.heure || null,
+      depots: deps, retraits: rets, fraisRetrait: frais,
+      nbOps: txs.length, lastOp: txs[0]?.heure || null,
+      cashDepart, cashActuel,
+      mtnActuel, moovActuel, celtiisActuel, momoActuel,
+      pointTotal, fl,
     };
   }
 
@@ -452,33 +482,56 @@ export default function CashPoint() {
       <main style={{ padding:"16px 16px 120px", maxWidth:520, margin:"0 auto" }}>
 
         {/* ══ DASHBOARD PATRON ══════════════════════════════════════ */}
-        {isPatron && tab==="dashboard" && (
+        {isPatron && tab==="dashboard" && !selectedAgent && (
           <div>
-            <div style={{ fontWeight:900, fontSize:20, marginBottom:20, color:T.text }}>📊 Tableau de bord</div>
+            {/* ── HEADER ── */}
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
+              <div>
+                <div style={{ fontWeight:900, fontSize:20, color:T.text }}>📊 Tableau de bord</div>
+                <div style={{ fontSize:11, color:T.sub, marginTop:2 }}>{todayStr()===selectedDate?"Aujourd'hui":"Données du "+new Date(selectedDate).toLocaleDateString("fr-FR",{day:"numeric",month:"long"})}</div>
+              </div>
+              <button onClick={loadPatronData} style={{ background:T.card, border:`1px solid ${T.border}`, borderRadius:10, padding:"8px 14px", color:T.sub, fontSize:12, cursor:"pointer" }}>🔄 Rafraîchir</button>
+            </div>
 
-            {/* Résumé global */}
-            {(() => {
-              const totalCom = allTxs.filter(t=>t.type==="retrait").reduce((s,t)=>s+Number(t.commission),0);
-              const totalOps = allTxs.length;
+            {/* ── RÉSUMÉ GLOBAL ── */}
+            {(()=>{
+              const totalCA      = allTxs.reduce((s,t)=>s+Number(t.montant),0);
+              const totalFrais   = allTxs.filter(t=>t.type==="retrait").reduce((s,t)=>s+Number(t.commission),0);
+              const totalCashDep = allFloats.reduce((s,f)=>s+Number(f.cash||0),0);
+              const totalOps     = allTxs.length;
               return (
-                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:20 }}>
-                  <div style={{ background:T.card, borderRadius:14, padding:16, border:`1px solid ${T.border}` }}>
-                    <div style={{ fontSize:11, color:T.sub, marginBottom:4 }}>OPÉRATIONS</div>
-                    <div style={{ fontSize:24, fontWeight:900, color:"#00C896" }}>{totalOps}</div>
-                    <div style={{ fontSize:11, color:T.sub }}>aujourd'hui</div>
+                <div style={{ marginBottom:20 }}>
+                  {/* CA + Frais */}
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:10 }}>
+                    <div style={{ background:T.card, borderRadius:14, padding:"14px 16px", border:`1px solid ${T.border}` }}>
+                      <div style={{ fontSize:10, color:T.sub, marginBottom:4, letterSpacing:1, fontWeight:700 }}>CHIFFRE D'AFFAIRES</div>
+                      <div style={{ fontSize:22, fontWeight:900, color:"#00C896" }}>{fF(totalCA)}</div>
+                      <div style={{ fontSize:11, color:T.sub, marginTop:2 }}>{totalOps} opérations</div>
+                    </div>
+                    <div style={{ background:T.card, borderRadius:14, padding:"14px 16px", border:`1px solid ${T.border}` }}>
+                      <div style={{ fontSize:10, color:T.sub, marginBottom:4, letterSpacing:1, fontWeight:700 }}>FRAIS DE RETRAIT</div>
+                      <div style={{ fontSize:22, fontWeight:900, color:"#FFB800" }}>{fF(totalFrais)}</div>
+                      <div style={{ fontSize:11, color:T.sub, marginTop:2 }}>du jour</div>
+                    </div>
                   </div>
-                  <div style={{ background:T.card, borderRadius:14, padding:16, border:`1px solid ${T.border}` }}>
-                    <div style={{ fontSize:11, color:T.sub, marginBottom:4 }}>COMMISSIONS</div>
-                    <div style={{ fontSize:20, fontWeight:900, color:"#FFB800" }}>{fF(totalCom)}</div>
-                    <div style={{ fontSize:11, color:T.sub }}>aujourd'hui</div>
-                  </div>
+                  {/* Cash total de départ */}
+                  {totalCashDep > 0 && (
+                    <div style={{ background:T.card, borderRadius:14, padding:"14px 16px", border:`1px solid #00C89630` }}>
+                      <div style={{ fontSize:10, color:T.sub, marginBottom:4, letterSpacing:1, fontWeight:700 }}>💵 CASH TOTAL DE DÉPART (tous agents)</div>
+                      <div style={{ fontSize:20, fontWeight:900, color:"#00C896" }}>{fF(totalCashDep)}</div>
+                    </div>
+                  )}
                 </div>
               );
             })()}
 
-            {/* Carte par agent */}
-            <div style={{ fontSize:11, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:12 }}>MES AGENTS — {todayStr()===selectedDate?"AUJOURD'HUI":"CE JOUR"}</div>
+            {/* ── AGENTS ── */}
+            <div style={{ fontSize:11, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:12 }}>
+              MES AGENTS — {agents.length} au total
+            </div>
+
             {loading && <div style={{ textAlign:"center", color:T.sub, padding:32 }}>⏳ Chargement...</div>}
+
             {!loading && agents.length === 0 && (
               <div style={{ background:T.card, borderRadius:16, padding:32, textAlign:"center", border:`1px solid ${T.border}` }}>
                 <div style={{ fontSize:32, marginBottom:12 }}>👷</div>
@@ -489,44 +542,186 @@ export default function CashPoint() {
                 </button>
               </div>
             )}
+
             {agents.map(ag => {
-              const stats = getAgentStats(ag.id);
-              const hasActivity = stats.nbOps > 0;
+              const s = getAgentStats(ag.id);
+              const actif = s.nbOps > 0;
+              const cashColor = s.cashActuel === null ? T.sub : s.cashActuel < 0 ? "#E63946" : s.cashActuel/(s.cashDepart||1) < 0.2 ? "#FFB800" : "#00C896";
               return (
-                <div key={ag.id} style={{ background:T.card, borderRadius:16, padding:16, marginBottom:12, border:`1px solid ${T.border}`, borderLeft:`3px solid ${hasActivity?"#00C896":"#E63946"}` }}>
-                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
+                <div key={ag.id}
+                  onClick={()=>setSelectedAgent(ag)}
+                  style={{ background:T.card, borderRadius:16, padding:16, marginBottom:12, border:`1px solid ${T.border}`, borderLeft:`3px solid ${actif?"#00C896":"#4A5060"}`, cursor:"pointer" }}>
+
+                  {/* Nom + statut */}
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
                     <div>
-                      <div style={{ fontWeight:800, fontSize:15 }}>{ag.nom}</div>
-                      <div style={{ fontSize:11, color:T.sub }}>+229 {ag.telephone} · {hasActivity ? `Actif · ${stats.lastOp}` : "Inactif aujourd'hui"}</div>
+                      <div style={{ fontWeight:800, fontSize:15 }}>👷 {ag.nom}</div>
+                      <div style={{ fontSize:11, color:T.sub, marginTop:2 }}>{actif ? `🕐 Dernière op : ${s.lastOp}` : "Aucune opération aujourd'hui"}</div>
                     </div>
-                    <div style={{ background:hasActivity?"#00C89618":"#E6394618", borderRadius:8, padding:"4px 10px", fontSize:11, fontWeight:700, color:hasActivity?"#00C896":"#E63946" }}>
-                      {hasActivity ? "🟢 Actif" : "🔴 Inactif"}
-                    </div>
-                  </div>
-                  <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:8 }}>
-                    <div style={{ background:T.hero, borderRadius:10, padding:"10px 8px", textAlign:"center" }}>
-                      <div style={{ fontSize:10, color:T.sub }}>OPÉRATIONS</div>
-                      <div style={{ fontSize:18, fontWeight:900, color:"#00C896" }}>{stats.nbOps}</div>
-                    </div>
-                    <div style={{ background:T.hero, borderRadius:10, padding:"10px 8px", textAlign:"center" }}>
-                      <div style={{ fontSize:10, color:T.sub }}>DÉPÔTS</div>
-                      <div style={{ fontSize:13, fontWeight:800, color:"#00C896" }}>{fF(stats.depots)}</div>
-                    </div>
-                    <div style={{ background:T.hero, borderRadius:10, padding:"10px 8px", textAlign:"center" }}>
-                      <div style={{ fontSize:10, color:T.sub }}>COMMISSIONS</div>
-                      <div style={{ fontSize:13, fontWeight:800, color:"#FFB800" }}>{fF(stats.commissions)}</div>
+                    <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                      <div style={{ background:actif?"#00C89618":"#4A506020", borderRadius:8, padding:"4px 10px", fontSize:11, fontWeight:700, color:actif?"#00C896":T.sub }}>
+                        {actif ? "🟢 Actif" : "⚫ Inactif"}
+                      </div>
+                      <span style={{ color:T.sub, fontSize:16 }}>›</span>
                     </div>
                   </div>
+
+                  {/* 2 lignes de chiffres */}
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:8 }}>
+                    <div style={{ background:T.hero, borderRadius:10, padding:"10px 12px" }}>
+                      <div style={{ fontSize:10, color:T.sub, marginBottom:3, letterSpacing:0.5 }}>CA DU JOUR</div>
+                      <div style={{ fontSize:15, fontWeight:900, color:"#00C896" }}>{fF(s.depots + s.retraits)}</div>
+                    </div>
+                    <div style={{ background:T.hero, borderRadius:10, padding:"10px 12px" }}>
+                      <div style={{ fontSize:10, color:T.sub, marginBottom:3, letterSpacing:0.5 }}>FRAIS DE RETRAIT</div>
+                      <div style={{ fontSize:15, fontWeight:900, color:"#FFB800" }}>{fF(s.fraisRetrait)}</div>
+                    </div>
+                  </div>
+
+                  {/* Cash restant + Point total */}
+                  {s.cashActuel !== null && (
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+                      <div style={{ background:T.hero, borderRadius:10, padding:"10px 12px" }}>
+                        <div style={{ fontSize:10, color:T.sub, marginBottom:3, letterSpacing:0.5 }}>💵 CASH EN SAC</div>
+                        <div style={{ fontSize:15, fontWeight:900, color:cashColor }}>{fF(s.cashActuel)}</div>
+                      </div>
+                      <div style={{ background:"#00C89610", borderRadius:10, padding:"10px 12px", border:"1px solid #00C89625" }}>
+                        <div style={{ fontSize:10, color:T.sub, marginBottom:3, letterSpacing:0.5 }}>📊 POINT TOTAL</div>
+                        <div style={{ fontSize:15, fontWeight:900, color:"#00C896" }}>{fF(s.pointTotal)}</div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })}
-
-            {/* Rafraîchir */}
-            <button onClick={loadPatronData} style={{ width:"100%", padding:14, borderRadius:12, background:T.card, border:`1px solid ${T.border}`, color:T.sub, fontSize:13, cursor:"pointer", marginTop:8 }}>
-              🔄 Actualiser les données
-            </button>
           </div>
         )}
+
+        {/* ══ DETAIL AGENT (PATRON) ══════════════════════════════════ */}
+        {isPatron && tab==="dashboard" && selectedAgent && (()=>{
+          const ag = selectedAgent;
+          const s  = getAgentStats(ag.id);
+          const cashColor = s.cashActuel===null?T.sub:s.cashActuel<0?"#E63946":s.cashActuel/(s.cashDepart||1)<0.2?"#FFB800":"#00C896";
+          const OP_COLORS_MAP = { MTN:"#FFB800", MOOV:"#0066CC", Celtiis:"#E63946" };
+          const momoDetails = [
+            { op:"MTN",     actuel:s.mtnActuel,     depart:s.fl?Number(s.fl.float_mtn||0):null },
+            { op:"MOOV",    actuel:s.moovActuel,    depart:s.fl?Number(s.fl.float_moov||0):null },
+            { op:"Celtiis", actuel:s.celtiisActuel, depart:s.fl?Number(s.fl.float_celtiis||0):null },
+          ];
+          return (
+            <div>
+              {/* Retour */}
+              <button onClick={()=>setSelectedAgent(null)} style={{ background:T.card, border:`1px solid ${T.border}`, borderRadius:10, padding:"8px 16px", color:T.text, fontSize:13, fontWeight:700, cursor:"pointer", marginBottom:20, display:"flex", alignItems:"center", gap:6 }}>
+                ← Retour
+              </button>
+
+              {/* Nom agent */}
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
+                <div>
+                  <div style={{ fontWeight:900, fontSize:20 }}>👷 {ag.nom}</div>
+                  <div style={{ fontSize:12, color:T.sub, marginTop:3 }}>+229 {ag.telephone}</div>
+                </div>
+                <div style={{ background:s.nbOps>0?"#00C89618":"#4A506020", borderRadius:10, padding:"6px 14px", fontSize:12, fontWeight:800, color:s.nbOps>0?"#00C896":T.sub }}>
+                  {s.nbOps>0?"🟢 Actif":"⚫ Inactif"}
+                </div>
+              </div>
+
+              {/* 💵 Cash en sac */}
+              <div style={{ background:T.card, borderRadius:16, padding:18, marginBottom:12, border:`1px solid #00C89630` }}>
+                <div style={{ fontSize:11, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:12 }}>💵 ARGENT LIQUIDE (SAC)</div>
+                {s.cashDepart === null ? (
+                  <div style={{ color:T.faint, fontSize:13 }}>Cash de départ non renseigné</div>
+                ) : (
+                  <>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-end", marginBottom:8 }}>
+                      <div>
+                        <div style={{ fontSize:11, color:T.sub }}>Départ</div>
+                        <div style={{ fontSize:14, fontWeight:700, color:T.sub }}>{fF(s.cashDepart)}</div>
+                      </div>
+                      <div style={{ textAlign:"right" }}>
+                        <div style={{ fontSize:11, color:T.sub }}>Disponible maintenant</div>
+                        <div style={{ fontSize:26, fontWeight:900, color:cashColor }}>{fF(s.cashActuel)}</div>
+                      </div>
+                    </div>
+                    <div style={{ height:6, background:T.faint, borderRadius:3, overflow:"hidden" }}>
+                      <div style={{ height:"100%", width:`${Math.max(0,Math.min(100,s.cashActuel/(s.cashDepart||1)*100))}%`, background:cashColor, borderRadius:3 }} />
+                    </div>
+                    <div style={{ display:"flex", gap:8, marginTop:8 }}>
+                      <div style={{ flex:1, background:"#00C89610", border:"1px solid #00C89625", borderRadius:8, padding:"6px 10px", fontSize:11 }}>
+                        <span style={{ color:T.sub }}>⬇️ Dépôts </span><span style={{ color:"#00C896", fontWeight:800 }}>+{fF(s.depots)}</span>
+                      </div>
+                      <div style={{ flex:1, background:"#E6394610", border:"1px solid #E6394625", borderRadius:8, padding:"6px 10px", fontSize:11 }}>
+                        <span style={{ color:T.sub }}>⬆️ Retraits </span><span style={{ color:"#E63946", fontWeight:800 }}>-{fF(s.retraits)}</span>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* 📱 Comptes MoMo */}
+              <div style={{ background:T.card, borderRadius:16, padding:18, marginBottom:12, border:`1px solid #7B2FBE30` }}>
+                <div style={{ fontSize:11, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:14 }}>📱 COMPTES MOMO</div>
+                {momoDetails.map(({ op, actuel, depart }, i) => {
+                  const col = OP_COLORS_MAP[op];
+                  const pct = depart > 0 && actuel !== null ? Math.max(0, Math.min(100, actuel/depart*100)) : 0;
+                  return (
+                    <div key={op} style={{ marginBottom: i<2?14:0, paddingBottom:i<2?14:0, borderBottom:i<2?`1px solid ${T.border}`:"none" }}>
+                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
+                        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                          <div style={{ width:30, height:30, borderRadius:8, background:`${col}18`, border:`1px solid ${col}40`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:8, fontWeight:900, color:col }}>{op}</div>
+                          <div style={{ fontSize:13, fontWeight:700 }}>{op}</div>
+                        </div>
+                        {actuel !== null
+                          ? <div style={{ fontSize:16, fontWeight:900, color: actuel < 0 ? "#E63946" : actuel/(depart||1) < 0.15 ? "#FFB800" : "#00C896" }}>{fF(actuel)}</div>
+                          : <div style={{ fontSize:12, color:T.faint }}>Non renseigné</div>
+                        }
+                      </div>
+                      {depart !== null && depart > 0 && (
+                        <div style={{ height:4, background:T.faint, borderRadius:2, overflow:"hidden" }}>
+                          <div style={{ height:"100%", width:`${pct}%`, background:col, borderRadius:2 }} />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* 📊 Point total */}
+              <div style={{ background:"linear-gradient(135deg,#00C89615,#00A5FF10)", borderRadius:16, padding:18, marginBottom:12, border:"1px solid #00C89635" }}>
+                <div style={{ fontSize:11, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:8 }}>📊 POINT TOTAL DU JOUR</div>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+                  <div style={{ fontSize:13, color:T.sub }}>Argent liquide</div>
+                  <div style={{ fontSize:15, fontWeight:800, color:cashColor }}>{s.cashActuel!==null?fF(s.cashActuel):"—"}</div>
+                </div>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+                  <div style={{ fontSize:13, color:T.sub }}>Total MoMo (MTN + MOOV + Celtiis)</div>
+                  <div style={{ fontSize:15, fontWeight:800, color:"#9B5FDE" }}>{s.moovActuel!==null?fF(s.momoActuel):"—"}</div>
+                </div>
+                <div style={{ height:1, background:T.border, margin:"10px 0" }}/>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                  <div style={{ fontSize:14, fontWeight:800 }}>TOTAL GÉNÉRAL</div>
+                  <div style={{ fontSize:24, fontWeight:900, color:"#00C896" }}>{s.pointTotal!==null?fF(s.pointTotal):"—"}</div>
+                </div>
+              </div>
+
+              {/* Bilan journée */}
+              <div style={{ background:T.card, borderRadius:16, padding:18, border:`1px solid ${T.border}` }}>
+                <div style={{ fontSize:11, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:14 }}>📋 BILAN DE JOURNÉE</div>
+                {[
+                  ["CA total",         fF(s.depots+s.retraits), "#00C896"],
+                  ["Dépôts",           `${allTxs.filter(t=>t.agent_id===ag.id&&t.type==="depot").length} op · ${fF(s.depots)}`,  "#00C896"],
+                  ["Retraits",         `${allTxs.filter(t=>t.agent_id===ag.id&&t.type==="retrait").length} op · ${fF(s.retraits)}`, "#4F8EF7"],
+                  ["Frais de retrait", fF(s.fraisRetrait), "#FFB800"],
+                ].map(([label, val, col]) => (
+                  <div key={label} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 0", borderBottom:`1px solid ${T.border}` }}>
+                    <div style={{ fontSize:13, color:T.sub }}>{label}</div>
+                    <div style={{ fontSize:14, fontWeight:800, color:col }}>{val}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* ══ GESTION AGENTS (PATRON) ════════════════════════════════ */}
         {isPatron && tab==="agents" && (
@@ -851,11 +1046,11 @@ function AuthScreen({ T, dark, setDark, onPatronLogin, onAgentLogin }) {
     const pinHash = await hashPin(p);
     const tel = "01" + form.telephone;
     const patron = { telephone: tel, nom: form.nom.trim(), nom_entreprise: form.entreprise.trim(), registre_commerce: form.rc.trim(), pays: form.pays, pin: pinHash, phone_verified: true };
-    const saved = await savePatron(patron);
+    const result = await savePatron(patron);
     setLoading(false);
-    if (!saved) { setError("Erreur lors de la création. Réessaie."); return; }
-    lsSet("cp_patron", { ...saved, pin: pinHash });
-    onPatronLogin({ ...saved, pin: pinHash });
+    if (!result.success) { setError(`❌ ${result.error}`); setStep(3); return; }
+    lsSet("cp_patron", { ...result.data, pin: pinHash });
+    onPatronLogin({ ...result.data, pin: pinHash });
   }
 
   // ── PATRON CONNEXION ─────────────────────────────────────────────
