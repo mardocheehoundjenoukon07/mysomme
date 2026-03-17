@@ -1,5 +1,22 @@
 import { useState, useEffect, useCallback } from "react";
 
+// Inject global reset immediately
+if (typeof document !== "undefined") {
+  let s = document.getElementById("cp-reset");
+  if (!s) {
+    s = document.createElement("style");
+    s.id = "cp-reset";
+    s.textContent = `
+      *,*::before,*::after{box-sizing:border-box!important;margin:0!important;padding:0!important;}
+      html,body{width:100%!important;max-width:100%!important;min-height:100vh!important;margin:0!important;padding:0!important;overflow-x:hidden!important;}
+      #root,#root>*,[data-reactroot],[data-reactroot]>*{width:100%!important;max-width:100%!important;margin:0!important;padding:0!important;}
+      button{-webkit-tap-highlight-color:transparent!important;outline:none!important;}
+      input,select,textarea{outline:none!important;}
+    `;
+    document.head.appendChild(s);
+  }
+}
+
 // ─── SUPABASE ─────────────────────────────────────────────────────────────────
 const SUPA_URL = "https://xwpepotkvjendslfgpza.supabase.co";
 const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh3cGVwb3RrdmplbmRzbGZncHphIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMwNTIxOTMsImV4cCI6MjA4ODYyODE5M30.DzgVA46ldUCX-CGE-Byk3QZkQSRMr_HvVXhJl8ZT9H0";
@@ -215,7 +232,7 @@ function PinPad({ title, subtitle, onSubmit, T, error }) {
     if (p.length === 4) setTimeout(() => { onSubmit(p); setPin(""); }, 140);
   };
   return (
-    <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", minHeight:"100vh", padding:24, background:T.bg }}>
+    <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", minHeight:"100vh", width:"100%", maxWidth:"100%", padding:"24px 20px", background:T.bg, boxSizing:"border-box" }}>
       <div style={{ fontSize:48, marginBottom:20 }}>🔐</div>
       <div style={{ fontWeight:900, fontSize:22, marginBottom:6, color:T.text, textAlign:"center" }}>{title}</div>
       <div style={{ fontSize:13, color:T.sub, marginBottom:32, textAlign:"center" }}>{subtitle}</div>
@@ -255,7 +272,7 @@ function OTPScreen({ telephone, onVerified, onBack, T }) {
   }
 
   return (
-    <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", minHeight:"100vh", padding:24, background:T.bg }}>
+    <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", minHeight:"100vh", width:"100%", maxWidth:"100%", padding:"24px 20px", background:T.bg, boxSizing:"border-box" }}>
       <div style={{ width:"100%", maxWidth:360 }}>
         <div style={{ textAlign:"center", marginBottom:32 }}>
           <div style={{ fontSize:48, marginBottom:16 }}>📱</div>
@@ -417,8 +434,8 @@ export default function CashPoint() {
   const isAgent  = !!agent;
 
   return (
-    <div style={{ background:T.bg, minHeight:"100vh", width:"100%", maxWidth:"100%", color:T.text, fontFamily:"'Segoe UI',system-ui,sans-serif", margin:0, padding:0 }}>
-      <style>{`*{box-sizing:border-box!important;margin:0!important;padding:0!important;}html,body{width:100%!important;max-width:100%!important;margin:0!important;padding:0!important;background:${T.bg}!important;overflow-x:hidden!important;}#root,#root>div,[data-reactroot]{width:100%!important;max-width:100%!important;margin:0!important;padding:0!important;}button{-webkit-tap-highlight-color:transparent;outline:none;}input,select{outline:none;}`}</style>
+    <div style={{ background:T.bg, minHeight:"100vh", width:"100vw", maxWidth:"100%", color:T.text, fontFamily:"'Segoe UI',system-ui,sans-serif", margin:0, padding:0, overflowX:"hidden" }}>
+      <style>{`*,*::before,*::after{box-sizing:border-box!important;margin:0!important;padding:0!important;}html,body,#root{width:100%!important;min-width:100%!important;max-width:100%!important;margin:0!important;padding:0!important;background:${T.bg}!important;overflow-x:hidden!important;}body>div,#root>div{width:100%!important;max-width:100%!important;margin:0!important;padding:0!important;}button{-webkit-tap-highlight-color:transparent;outline:none;}input,select{outline:none;-webkit-appearance:none;}`}</style>
 
       {/* FLASH */}
       {flash && (
@@ -442,7 +459,7 @@ export default function CashPoint() {
       </header>
 
       {/* CONTENU */}
-      <main style={{ padding:"16px 16px 120px", maxWidth:520, margin:"0 auto" }}>
+      <main style={{ padding:"16px 16px 120px", width:"100%", maxWidth:"100%", boxSizing:"border-box" }}>
 
         {/* ══ DASHBOARD PATRON ══════════════════════════════════════ */}
         {isPatron && tab==="dashboard" && (
@@ -687,7 +704,7 @@ export default function CashPoint() {
 
       {/* ══ BOTTOM NAV ══════════════════════════════════════════════ */}
       <nav style={{ position:"fixed", bottom:0, left:0, right:0, background:T.card, borderTop:`1px solid ${T.border}`, zIndex:50 }}>
-        <div style={{ display:"flex", justifyContent:"space-around", padding:"8px 0 12px", maxWidth:520, margin:"0 auto" }}>
+        <div style={{ display:"flex", justifyContent:"space-around", padding:"8px 0 12px", width:"100%" }}>
           {isPatron && [["dashboard","📊","Dashboard"],["agents","👷","Agents"],["profil","👤","Profil"]].map(([key,icon,label])=>(
             <button key={key} onClick={()=>setTab(key)} style={{ background:"none", border:"none", color:tab===key?"#00C896":T.sub, fontSize:10, fontWeight:tab===key?800:500, cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", gap:3, padding:"0 16px" }}>
               <span style={{ fontSize:22 }}>{icon}</span>{label}
@@ -757,7 +774,7 @@ export default function CashPoint() {
       {/* ══ MODAL MATIN AGENT ═══════════════════════════════════════ */}
       {showMorning && (
         <div style={{ position:"fixed", inset:0, background:"#000E", display:"flex", alignItems:"center", justifyContent:"center", zIndex:300, padding:16 }}>
-          <div style={{ background:T.card, borderRadius:20, padding:24, width:"100%", maxWidth:400 }}>
+          <div style={{ background:T.card, borderRadius:20, padding:24, width:"100%", maxWidth:"100%" }}>
             <div style={{ textAlign:"center", marginBottom:20 }}>
               <div style={{ fontSize:36, marginBottom:8 }}>🌅</div>
               <div style={{ fontWeight:900, fontSize:18, color:T.text }}>Bonne journée, {agent.nom.split(" ")[0]} !</div>
@@ -949,8 +966,8 @@ function AuthScreen({ T, dark, setDark, onPatronLogin, onAgentLogin }) {
   if (step==="agent-pin-login")    return <PinPad title="Bon retour 👋" subtitle="Entre ton code PIN" onSubmit={handleAgentPinLogin} T={T} error={error} />;
 
   return (
-    <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", minHeight:"100vh", padding:24, background:T.bg }}>
-      <div style={{ width:"100%", maxWidth:400 }}>
+    <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", minHeight:"100vh", width:"100%", maxWidth:"100%", padding:"24px 20px", background:T.bg, boxSizing:"border-box" }}>
+      <div style={{ width:"100%", maxWidth:"100%" }}>
 
         {/* Logo */}
         <div style={{ textAlign:"center", marginBottom:32 }}>
