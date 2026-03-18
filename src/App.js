@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // ─── SUPABASE ─────────────────────────────────────────────────────────────────
@@ -1222,7 +1222,7 @@ export default function CashPoint() {
               setSaving(false); setForm({}); setFlash("forfait"); setTimeout(()=>setFlash(null),2200);
               setTimeout(()=>loadAgentTxs(selectedDate),1200);
             }} disabled={saving} style={{ width:"100%", padding:14, borderRadius:12, background:saving?"#1A1D2E":"linear-gradient(135deg,#9B5FDE,#7B2FBE)", border:"none", color:saving?T.sub:"#fff", fontWeight:900, fontSize:14, cursor:saving?"not-allowed":"pointer" }}>
-              {saving?"⏳...`:`✅ ${form.forfaitOp} ${form.forfaitType} ${fF(form.forfaitPrix)}`}
+              {saving?"⏳ Sauvegarde…":`✅ ${form.forfaitOp} ${form.forfaitType} ${fF(form.forfaitPrix)}`}
             </button>)}
           </div>)}
 
