@@ -178,6 +178,14 @@ async function saveAgent(a) {
     return r.ok?(await r.json())[0]:null;
   } catch { return null; }
 }
+async function deleteAgent(agentId) {
+  try {
+    await fetch(`${SUPA_URL}/rest/v1/cashpoint_transactions?agent_id=eq.${agentId}`,{method:"DELETE",headers:H()});
+    await fetch(`${SUPA_URL}/rest/v1/cashpoint_floats?agent_id=eq.${agentId}`,{method:"DELETE",headers:H()});
+    await fetch(`${SUPA_URL}/rest/v1/cashpoint_agents?id=eq.${agentId}`,{method:"DELETE",headers:H()});
+    return true;
+  } catch { return false; }
+}
 async function generateInviteCode(patronId) {
   const code=Math.random().toString(36).substring(2,8).toUpperCase();
   try {
@@ -641,6 +649,8 @@ export default function CashPoint() {
   const [allFloats,    setAllFloats]    = useState([]);
   const [selectedAgent,setSelectedAgent]= useState(null);
   const [inviteCode,   setInviteCode]   = useState(null);
+  const [confirmDelAgent,setConfirmDelAgent] = useState(null); // agent à supprimer
+  const [deletingAgent,  setDeletingAgent]   = useState(false);
 
   // ── AGENT DATA ──────────────────────────────────────────────────────────────
   const [agentTxs,    setAgentTxs]    = useState([]);
@@ -820,6 +830,16 @@ export default function CashPoint() {
     const uid=agent.id||agent.telephone;
     const updated={...floats,[op]:Number(solde)};
     setFloats(updated); lsSet(floatKey(selectedDate,uid),updated);
+    // ✅ Sync Supabase pour que le patron voie les soldes
+    saveFloat({
+      agent_id: agent.id,
+      patron_id: agent.patron_id,
+      date: selectedDate,
+      cash: capitalCash||0,
+      float_mtn: op==="MTN"?Number(solde):(updated.MTN||null),
+      float_moov: op==="MOOV"?Number(solde):(updated.MOOV||null),
+      float_celtiis: op==="Celtiis"?Number(solde):(updated.Celtiis||null),
+    });
   }
   function calcCashActuel() {
     if (capitalCash===null) return null;
@@ -918,11 +938,22 @@ export default function CashPoint() {
         {isPatron && tab==="dashboard" && !selectedAgent && (<div>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
             <div>
-              <div style={{ fontWeight:900, fontSize:20 }}>📊 Tableau de bord</div>
-              <div style={{ fontSize:11, color:T.sub, marginTop:2 }}>{todayStr()===selectedDate?"Aujourd'hui":"Données du "+new Date(selectedDate).toLocaleDateString("fr-FR",{day:"numeric",month:"long"})}</div>
+              <div style={{ fontWeight:900, fontSize:20 }}>{getSalutation(patron.nom)}</div>
+              <div style={{ fontSize:11, color:T.sub, marginTop:2 }}>{todayStr()===selectedDate?"Tableau de bord du jour":"Données du "+new Date(selectedDate).toLocaleDateString("fr-FR",{day:"numeric",month:"long"})}</div>
             </div>
-            <button onClick={loadPatronData} style={{ background:T.card, border:`1px solid ${T.border}`, borderRadius:10, padding:"8px 14px", color:T.sub, fontSize:12, cursor:"pointer" }}>🔄</button>
+            <div style={{ display:"flex", gap:8 }}>
+              <button onClick={()=>setShowCal(true)} style={{ background:T.card, border:`1px solid ${T.border}`, borderRadius:10, padding:"8px 12px", color:T.text, fontSize:16, cursor:"pointer" }}>📅</button>
+              <button onClick={loadPatronData} style={{ background:T.card, border:`1px solid ${T.border}`, borderRadius:10, padding:"8px 12px", color:T.sub, fontSize:16, cursor:"pointer" }}>🔄</button>
+            </div>
           </div>
+
+          {/* Bandeau date passée */}
+          {!isToday && (
+            <div style={{ background:"#4F8EF720", border:"1px solid #4F8EF740", borderRadius:12, padding:"10px 16px", marginBottom:16, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+              <div style={{ fontSize:13, fontWeight:700, color:"#4F8EF7" }}>📅 {new Date(selectedDate).toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</div>
+              <button onClick={()=>setSelectedDate(todayStr())} style={{ background:"#4F8EF7", border:"none", borderRadius:8, padding:"5px 14px", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer" }}>Aujourd'hui</button>
+            </div>
+          )}
 
           {/* Résumé global */}
           {(()=>{
@@ -1089,8 +1120,17 @@ export default function CashPoint() {
           </div>
           {agents.map(ag=>(
             <div key={ag.id} style={{ background:T.card, borderRadius:14, padding:16, marginBottom:10, border:`1px solid ${T.border}`, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-              <div><div style={{ fontWeight:700 }}>{ag.nom}</div><div style={{ fontSize:12, color:T.sub }}>+229 {ag.telephone}</div></div>
-              <div style={{ background:"#00C89618", borderRadius:8, padding:"4px 10px", fontSize:11, fontWeight:700, color:"#00C896" }}>Actif</div>
+              <div>
+                <div style={{ fontWeight:700 }}>{ag.nom}</div>
+                <div style={{ fontSize:12, color:T.sub }}>+229 {ag.telephone}</div>
+              </div>
+              <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                <div style={{ background:"#00C89618", borderRadius:8, padding:"4px 10px", fontSize:11, fontWeight:700, color:"#00C896" }}>Actif</div>
+                <button onClick={()=>setConfirmDelAgent(ag)}
+                  style={{ background:"#E6394618", border:"1px solid #E6394640", borderRadius:8, padding:"6px 10px", color:"#E63946", fontSize:13, cursor:"pointer", fontWeight:700 }}>
+                  🗑️
+                </button>
+              </div>
             </div>
           ))}
         </div>)}
@@ -1515,6 +1555,63 @@ export default function CashPoint() {
         </div>
       </div>)}
 
+      {/* ══ CONFIRM SUPPRESSION AGENT (PATRON) ═══════════════════════════ */}
+      {confirmDelAgent && (<div style={{ position:"fixed", inset:0, background:"#000D", display:"flex", alignItems:"center", justifyContent:"center", zIndex:500, padding:24 }}>
+        <div style={{ background:T.card, borderRadius:22, padding:28, width:"100%", maxWidth:340, border:"1px solid #E6394640", textAlign:"center" }}>
+          <div style={{ fontSize:40, marginBottom:12 }}>⚠️</div>
+          <div style={{ fontSize:18, fontWeight:900, marginBottom:8, color:"#E63946" }}>Supprimer cet agent ?</div>
+          <div style={{ background:T.hero, borderRadius:12, padding:"12px 16px", marginBottom:16, fontSize:13 }}>
+            <strong>{confirmDelAgent.nom}</strong><br/>
+            <span style={{ color:T.sub, fontSize:12 }}>+229 {confirmDelAgent.telephone}</span>
+          </div>
+          <div style={{ fontSize:12, color:T.sub, marginBottom:22, lineHeight:1.6 }}>
+            Toutes ses opérations et données seront <strong style={{color:"#E63946"}}>définitivement supprimées</strong>.
+          </div>
+          <div style={{ display:"flex", gap:10 }}>
+            <button onClick={()=>setConfirmDelAgent(null)} disabled={deletingAgent}
+              style={{ flex:1, padding:14, borderRadius:12, background:T.hero, border:`1px solid ${T.border2}`, color:T.text, fontWeight:700, cursor:"pointer" }}>Annuler</button>
+            <button disabled={deletingAgent} onClick={async()=>{
+              setDeletingAgent(true);
+              await deleteAgent(confirmDelAgent.id);
+              setDeletingAgent(false);
+              setConfirmDelAgent(null);
+              loadPatronData();
+            }} style={{ flex:1, padding:14, borderRadius:12, background:"#E63946", border:"none", color:"#fff", fontWeight:800, cursor:deletingAgent?"not-allowed":"pointer", opacity:deletingAgent?0.7:1 }}>
+              {deletingAgent?"⏳ Suppression...":"Supprimer"}
+            </button>
+          </div>
+        </div>
+      </div>)}
+
+      {/* ══ CALENDRIER PATRON ════════════════════════════════════════════ */}
+      {showCal && isPatron && (<div style={{ position:"fixed", inset:0, background:"#000C", display:"flex", alignItems:"flex-end", zIndex:300 }} onClick={()=>setShowCal(false)}>
+        <div onClick={e=>e.stopPropagation()} style={{ background:T.card, borderRadius:"22px 22px 0 0", padding:"20px 18px 36px", border:`1px solid ${T.border2}`, width:"100%" }}>
+          <div style={{ width:36, height:4, background:T.border2, borderRadius:2, margin:"0 auto 18px" }} />
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:18 }}>
+            <button onClick={()=>{if(calMonth===1){setCalMonth(12);setCalYear(y=>y-1);}else setCalMonth(m=>m-1);}} style={{ background:T.hero, border:"none", borderRadius:9, width:36, height:36, cursor:"pointer", fontSize:18, color:T.text }}>‹</button>
+            <div style={{ fontWeight:800, fontSize:15 }}>{MOIS_FR[calMonth-1]} {calYear}</div>
+            <button onClick={()=>{if(calMonth===12){setCalMonth(1);setCalYear(y=>y+1);}else setCalMonth(m=>m+1);}} style={{ background:T.hero, border:"none", borderRadius:9, width:36, height:36, cursor:"pointer", fontSize:18, color:T.text }}>›</button>
+          </div>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", marginBottom:8 }}>
+            {JOURS.map(j=>(<div key={j} style={{ textAlign:"center", fontSize:10, color:T.sub, fontWeight:700, padding:"4px 0" }}>{j}</div>))}
+          </div>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:4 }}>
+            {Array(new Date(calYear,calMonth-1,1).getDay()).fill(null).map((_,i)=>(<div key={`e${i}`}/>))}
+            {Array(new Date(calYear,calMonth,0).getDate()).fill(null).map((_,i)=>{
+              const day=i+1, ds=`${calYear}-${String(calMonth).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
+              const isTod=ds===todayStr(), isSel=ds===selectedDate, isFut=ds>todayStr();
+              return (<button key={day} disabled={isFut} onClick={()=>{ setSelectedDate(ds); setShowCal(false); }}
+                style={{ width:"100%", aspectRatio:"1", borderRadius:10, border:isSel?"2px solid #00C896":isTod?`2px solid ${OP_COLORS.MTN}`:`1px solid ${T.border}`, background:isSel?"#00C89620":isTod?"#FFB80015":T.hero, color:isFut?T.faint:isSel?"#00C896":T.text, fontWeight:isSel||isTod?800:500, fontSize:13, cursor:isFut?"not-allowed":"pointer", opacity:isFut?0.3:1 }}>
+                {day}
+              </button>);
+            })}
+          </div>
+          <button onClick={()=>{ setSelectedDate(todayStr()); setShowCal(false); }} style={{ width:"100%", marginTop:16, padding:12, borderRadius:12, background:"linear-gradient(135deg,#00C896,#00A5FF)", border:"none", color:"#fff", fontWeight:800, fontSize:14, cursor:"pointer" }}>
+            📅 Aujourd'hui
+          </button>
+        </div>
+      </div>)}
+
       {/* ══ CONFIRM DÉCONNEXION ═════════════════════════════════════════ */}
       {confirmLogout && (<div style={{ position:"fixed", inset:0, background:"#000C", display:"flex", alignItems:"center", justifyContent:"center", zIndex:500, padding:24 }}>
         <div style={{ background:T.card, borderRadius:22, padding:30, width:"100%", maxWidth:340, border:`1px solid ${T.border2}`, textAlign:"center" }}>
@@ -1606,6 +1703,16 @@ export default function CashPoint() {
             const nf={MTN:null,MOOV:null,Celtiis:null};
             OPS.forEach(op=>{ const v=Number(morningInputs[op]); if(!isNaN(v)&&morningInputs[op]!=="") nf[op]=v; });
             setFloats(nf); lsSet(floatKey(todayStr(),uid),nf);
+            // ✅ Sauvegarder dans Supabase pour que le patron voie les données
+            saveFloat({
+              agent_id: agent.id,
+              patron_id: agent.patron_id,
+              date: todayStr(),
+              cash: Number(morningInputs.cash)||0,
+              float_mtn: nf.MTN,
+              float_moov: nf.MOOV,
+              float_celtiis: nf.Celtiis,
+            });
             setShowMorning(false);
           }} style={{ width:"100%", padding:16, borderRadius:14, background:"linear-gradient(135deg,#00C896,#00A5FF)", border:"none", color:"#fff", fontWeight:900, fontSize:16, cursor:"pointer", marginBottom:10 }}>
             ✅ Commencer la journée
