@@ -215,9 +215,13 @@ async function fetchAgentTxs(agentId, dateStr) {
 }
 async function saveTx(tx) {
   try {
-    const r=await fetch(`${SUPA_URL}/rest/v1/cashpoint_transactions`,{method:"POST",headers:H(),body:JSON.stringify(tx)});
-    return r.ok?(await r.json())[0]:null;
-  } catch { return null; }
+    // ⚠️ Retirer les champs locaux non connus de Supabase
+    const { localId, id, ...cleanTx } = tx;
+    const r=await fetch(`${SUPA_URL}/rest/v1/cashpoint_transactions`,{method:"POST",headers:H(),body:JSON.stringify(cleanTx)});
+    if (r.ok) return { ok:true, data:(await r.json())[0] };
+    const err=await r.json().catch(()=>({}));
+    return { ok:false, error: err.message||err.details||err.hint||`Erreur ${r.status}` };
+  } catch(e) { return { ok:false, error:e.message||"Pas de connexion" }; }
 }
 async function deleteTx(id) {
   try { await fetch(`${SUPA_URL}/rest/v1/cashpoint_transactions?id=eq.${id}`,{method:"DELETE",headers:H()}); } catch {}
@@ -231,25 +235,59 @@ async function fetchFloat(agentId, date) {
 }
 async function saveFloat(f) {
   try {
+    // Garder seulement les colonnes connues de Supabase
+    const { agent_id, patron_id, date, cash, float_mtn, float_moov, float_celtiis } = f;
+    const cleanFloat = { agent_id, patron_id, date, cash, float_mtn, float_moov, float_celtiis };
     const r=await fetch(`${SUPA_URL}/rest/v1/cashpoint_floats`,{
       method:"POST",
       headers:{...H(),"Prefer":"return=representation,resolution=merge-duplicates"},
-      body:JSON.stringify(f)
+      body:JSON.stringify(cleanFloat)
     });
+    if (!r.ok) {
+      const err=await r.json().catch(()=>({}));
+      console.error("❌ saveFloat erreur:", err.message||err.details||r.status);
+    }
     return r.ok;
-  } catch { return false; }
+  } catch(e) { console.error("❌ saveFloat exception:", e.message); return false; }
+}
 }
 // Patron — toutes les données agents
-async function fetchAllTxsForPatron(patronId, dateStr) {
+async function fetchAllTxsForPatron(patronId, dateStr, agentIds) {
   try {
-    const r=await fetch(`${SUPA_URL}/rest/v1/cashpoint_transactions?patron_id=eq.${patronId}&created_at=gte.${dateStr}T00:00:00+01:00&created_at=lte.${dateStr}T23:59:59+01:00&order=created_at.desc`,{headers:H()});
-    return r.ok?await r.json():[];
+    // Stratégie 1 : on a les IDs des agents → requête directe et fiable
+    if (agentIds && agentIds.length > 0) {
+      const ids = agentIds.join(",");
+      const r = await fetch(
+        `${SUPA_URL}/rest/v1/cashpoint_transactions?agent_id=in.(${ids})&created_at=gte.${dateStr}T00:00:00+01:00&created_at=lte.${dateStr}T23:59:59+01:00&order=created_at.desc`,
+        { headers: H() }
+      );
+      if (r.ok) return await r.json();
+    }
+    // Stratégie 2 : fallback par patron_id
+    const r = await fetch(
+      `${SUPA_URL}/rest/v1/cashpoint_transactions?patron_id=eq.${patronId}&created_at=gte.${dateStr}T00:00:00+01:00&created_at=lte.${dateStr}T23:59:59+01:00&order=created_at.desc`,
+      { headers: H() }
+    );
+    return r.ok ? await r.json() : [];
   } catch { return []; }
 }
-async function fetchAllFloatsForPatron(patronId, dateStr) {
+async function fetchAllFloatsForPatron(patronId, dateStr, agentIds) {
   try {
-    const r=await fetch(`${SUPA_URL}/rest/v1/cashpoint_floats?patron_id=eq.${patronId}&date=eq.${dateStr}&select=*`,{headers:H()});
-    return r.ok?await r.json():[];
+    // Stratégie 1 : par agent IDs
+    if (agentIds && agentIds.length > 0) {
+      const ids = agentIds.join(",");
+      const r = await fetch(
+        `${SUPA_URL}/rest/v1/cashpoint_floats?agent_id=in.(${ids})&date=eq.${dateStr}&select=*`,
+        { headers: H() }
+      );
+      if (r.ok) return await r.json();
+    }
+    // Stratégie 2 : fallback par patron_id
+    const r = await fetch(
+      `${SUPA_URL}/rest/v1/cashpoint_floats?patron_id=eq.${patronId}&date=eq.${dateStr}&select=*`,
+      { headers: H() }
+    );
+    return r.ok ? await r.json() : [];
   } catch { return []; }
 }
 // Cache offline agent
@@ -633,6 +671,7 @@ export default function CashPoint() {
   const [loading,    setLoading]   = useState(false);
   const [saving,     setSaving]    = useState(false);
   const [flash,      setFlash]     = useState(null);
+  const [flashErr,   setFlashErr]  = useState(null);
   const [modal,      setModal]     = useState(null);
   const [form,       setForm]      = useState({});
   const [confirm,    setConfirm]   = useState(null);
@@ -690,6 +729,13 @@ export default function CashPoint() {
     if (patron&&!locked) loadPatronData();
   },[patron,locked,selectedDate]);
 
+  // Auto-refresh toutes les 30 secondes pour le patron
+  useEffect(()=>{
+    if (!patron||locked) return;
+    const iv = setInterval(()=>{ loadPatronData(); }, 30000);
+    return ()=>clearInterval(iv);
+  },[patron,locked,selectedDate]);
+
   useEffect(()=>{
     if (agent&&!locked) { loadAgentTxs(selectedDate); loadAgentFloats(selectedDate); }
   },[agent,locked,selectedDate]);
@@ -732,12 +778,15 @@ export default function CashPoint() {
   // ── CHARGEMENT DATA PATRON ──────────────────────────────────────────────────
   async function loadPatronData() {
     setLoading(true);
-    const [ag,txs,fls] = await Promise.all([
-      fetchAgents(patron.id),
-      fetchAllTxsForPatron(patron.id,selectedDate),
-      fetchAllFloatsForPatron(patron.id,selectedDate),
+    // Charger les agents d'abord pour avoir leurs IDs
+    const ag = await fetchAgents(patron.id);
+    setAgents(ag);
+    const agentIds = ag.map(a => a.id).filter(Boolean);
+    const [txs, fls] = await Promise.all([
+      fetchAllTxsForPatron(patron.id, selectedDate, agentIds),
+      fetchAllFloatsForPatron(patron.id, selectedDate, agentIds),
     ]);
-    setAgents(ag); setAllTxs(txs); setAllFloats(fls);
+    setAllTxs(txs); setAllFloats(fls);
     setLoading(false);
   }
 
@@ -770,8 +819,17 @@ export default function CashPoint() {
     const user=patron||agent;
     const pinHash=await hashPin(pin);
     if (pinHash===user.pin) {
-      if (isPatron) fetchPatron(patron.telephone).then(f=>{ if(f){const t={...f,pin:patron.pin};lsSet("cp_patron",t);setPatron(t);} });
-      if (isAgent)  fetchAgent(agent.telephone).then(f=>{ if(f){const t={...f,pin:agent.pin};lsSet("cp_agent",t);setAgent(t);} });
+      if (isPatron) {
+        fetchPatron(patron.telephone).then(f=>{
+          if(f){ const t={...f,pin:patron.pin}; lsSet("cp_patron",t); setPatron(t); }
+        });
+      }
+      if (isAgent) {
+        // Recharger depuis Supabase pour avoir patron_id, id UUID etc.
+        fetchAgent(agent.telephone).then(f=>{
+          if(f){ const t={...f,pin:agent.pin}; lsSet("cp_agent",t); setAgent(t); }
+        });
+      }
       setLocked(false); setPinErr(""); setPinAttempts(0);
     } else {
       const n=pinAttempts+1; setPinAttempts(n);
@@ -796,24 +854,36 @@ export default function CashPoint() {
     const com=(modal==="retrait"&&!retraitDist)?calcFrais(form.operateur,Number(form.montant)):0;
     const localId=Date.now();
     const tx={
-      agent_id:agent.id, patron_id:agent.patron_id,
+      agent_id:agent.id,
+      patron_id:agent.patron_id,
       type:modal, operateur:form.operateur, montant:Number(form.montant), commission:com,
       telephone:form.telephone?`01${form.telephone}`:null,
       heure:new Date().toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}),
       created_at:nowISO(), localId
     };
+
+    // Log pour diagnostic — visible dans F12 > Console
+    console.log("💾 Tentative save tx:", JSON.stringify(tx));
+
     const optimistic={...tx,id:localId};
     setAgentTxs(p=>[optimistic,...p]);
-    const saved=await saveTx(tx);
-    if (saved) { setAgentTxs(p=>p.map(t=>t.id===localId?saved:t)); }
-    else {
+    const result=await saveTx(tx);
+
+    if (result.ok) {
+      console.log("✅ TX sauvegardée dans Supabase:", result.data);
+      setAgentTxs(p=>p.map(t=>t.id===localId?result.data:t));
+    } else {
+      console.error("❌ ERREUR Supabase:", result.error, "| TX:", JSON.stringify(tx));
+      // Afficher l'erreur à l'agent pour qu'il puisse la reporter
+      setFlashErr(result.error);
+      setTimeout(()=>setFlashErr(null), 6000);
       const pend=lsGet(pendKey(uid))||[];
       lsSet(pendKey(uid),[...pend,tx]); setPendingCount(c=>c+1);
     }
     const cached=lsGet(txKey(selectedDate,uid))||[];
-    lsSet(txKey(selectedDate,uid),[saved||optimistic,...cached]);
+    lsSet(txKey(selectedDate,uid),[(result.ok?result.data:optimistic),...cached]);
     setSaving(false); setModal(null); setForm({}); setRetraitDist(false);
-    setFlash(modal); setTimeout(()=>setFlash(null),2200);
+    if (result.ok) { setFlash(modal); setTimeout(()=>setFlash(null),2200); }
     setTimeout(()=>loadAgentTxs(selectedDate),1200);
   }
 
@@ -900,9 +970,14 @@ export default function CashPoint() {
     <style>{`*,*::before,*::after{box-sizing:border-box!important;}html{margin:0!important;padding:0!important;}body{margin:0!important;padding:0!important;width:100vw!important;max-width:100%!important;overflow-x:hidden!important;}button{-webkit-tap-highlight-color:transparent!important;}input,select{outline:none;}`}</style>
     <div style={{ background:T.bg, minHeight:"100vh", width:"100vw", maxWidth:"100%", color:T.text, fontFamily:"'Segoe UI',system-ui,sans-serif", overflowX:"hidden" }}>
 
-      {/* FLASH */}
+      {/* FLASH SUCCÈS */}
       {flash && (<div style={{ position:"fixed", top:20, left:"50%", transform:"translateX(-50%)", background:TYPE_COLOR[flash]||"#00C896", color:"#fff", borderRadius:14, padding:"12px 28px", fontWeight:800, fontSize:14, zIndex:9999, boxShadow:"0 4px 24px #0009", whiteSpace:"nowrap" }}>
         ✅ {TYPE_LABEL[flash]||"Opération"} enregistrée !
+      </div>)}
+
+      {/* FLASH ERREUR — montre le vrai message Supabase */}
+      {flashErr && (<div style={{ position:"fixed", top:20, left:"50%", transform:"translateX(-50%)", background:"#E63946", color:"#fff", borderRadius:14, padding:"12px 20px", fontWeight:700, fontSize:12, zIndex:9999, boxShadow:"0 4px 24px #0009", maxWidth:"90vw", textAlign:"center" }}>
+        ❌ Erreur sync : {flashErr}
       </div>)}
 
       {/* HEADER */}
@@ -1255,11 +1330,12 @@ export default function CashPoint() {
               const lbls={internet:"🌐 Internet",appel:"📞 Appel",simple:"📱 Simple"};
               const tx={agent_id:agent.id,patron_id:agent.patron_id,type:"forfait",operateur:form.forfaitOp,montant:Number(form.forfaitPrix),commission:0,client:lbls[form.forfaitType]||"Forfait",telephone:null,heure:new Date().toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}),created_at:nowISO(),localId};
               const opt={...tx,id:localId}; setAgentTxs(p=>[opt,...p]);
-              const saved=await saveTx(tx);
-              if(saved){setAgentTxs(p=>p.map(t=>t.id===localId?saved:t));}
-              else{const pend=lsGet(pendKey(uid))||[];lsSet(pendKey(uid),[...pend,tx]);setPendingCount(c=>c+1);}
-              lsSet(txKey(selectedDate,uid),[saved||opt,...(lsGet(txKey(selectedDate,uid))||[])]);
-              setSaving(false); setForm({}); setFlash("forfait"); setTimeout(()=>setFlash(null),2200);
+              const result=await saveTx(tx);
+              if(result.ok){setAgentTxs(p=>p.map(t=>t.id===localId?result.data:t));}
+              else{console.error("❌ Forfait Supabase:",result.error);const pend=lsGet(pendKey(uid))||[];lsSet(pendKey(uid),[...pend,tx]);setPendingCount(c=>c+1);}
+              lsSet(txKey(selectedDate,uid),[(result.ok?result.data:opt),...(lsGet(txKey(selectedDate,uid))||[])]);
+              setSaving(false); setForm({});
+              if(result.ok){setFlash("forfait"); setTimeout(()=>setFlash(null),2200);}
               setTimeout(()=>loadAgentTxs(selectedDate),1200);
             }} disabled={saving} style={{ width:"100%", padding:14, borderRadius:12, background:saving?"#1A1D2E":"linear-gradient(135deg,#9B5FDE,#7B2FBE)", border:"none", color:saving?T.sub:"#fff", fontWeight:900, fontSize:14, cursor:saving?"not-allowed":"pointer" }}>
               {saving?"⏳ Sauvegarde…":`✅ ${form.forfaitOp} ${form.forfaitType} ${fF(form.forfaitPrix)}`}
