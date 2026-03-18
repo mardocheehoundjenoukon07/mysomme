@@ -250,7 +250,6 @@ async function saveFloat(f) {
     return r.ok;
   } catch(e) { console.error("❌ saveFloat exception:", e.message); return false; }
 }
-}
 // Patron — toutes les données agents
 async function fetchAllTxsForPatron(patronId, dateStr, agentIds) {
   try {
