@@ -1100,6 +1100,62 @@ export default function CashPoint() {
               </div>)}
             </div>);
           })}
+
+          {/* ══ FIL DES TRANSACTIONS EN DIRECT ══════════════════════════ */}
+          {allTxs.length > 0 && (
+            <div style={{ background:T.card, borderRadius:16, padding:18, marginTop:8, border:`1px solid ${T.border}` }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+                <div>
+                  <div style={{ fontWeight:800, fontSize:14 }}>📋 Opérations en direct</div>
+                  <div style={{ fontSize:11, color:T.sub, marginTop:2 }}>{allTxs.length} opération{allTxs.length>1?"s":""} aujourd'hui</div>
+                </div>
+                <div style={{ background:"#00C89618", borderRadius:8, padding:"4px 10px", fontSize:10, fontWeight:800, color:"#00C896" }}>🔴 LIVE</div>
+              </div>
+
+              {/* Totaux rapides */}
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:8, marginBottom:16 }}>
+                {[
+                  ["⬇️ Dépôts", allTxs.filter(t=>t.type==="depot").length, allTxs.filter(t=>t.type==="depot").reduce((s,t)=>s+Number(t.montant),0), "#00C896"],
+                  ["⬆️ Retraits", allTxs.filter(t=>t.type==="retrait").length, allTxs.filter(t=>t.type==="retrait").reduce((s,t)=>s+Number(t.montant),0), "#4F8EF7"],
+                  ["💰 Frais", allTxs.filter(t=>t.type==="retrait").length, allTxs.filter(t=>t.type==="retrait").reduce((s,t)=>s+Number(t.commission),0), "#FFB800"],
+                ].map(([lbl,nb,total,col])=>(
+                  <div key={lbl} style={{ background:T.hero, borderRadius:10, padding:"10px 8px", textAlign:"center" }}>
+                    <div style={{ fontSize:10, color:T.sub, marginBottom:4 }}>{lbl}</div>
+                    <div style={{ fontSize:14, fontWeight:900, color:col }}>{fF(total)}</div>
+                    <div style={{ fontSize:10, color:T.faint }}>{nb} op</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Liste des transactions */}
+              {allTxs.map((t,i) => {
+                const agNom = agents.find(a=>a.id===t.agent_id)?.nom || "Agent";
+                return (
+                  <div key={t.id||i} style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 0", borderBottom: i<allTxs.length-1?`1px solid ${T.border}`:"none" }}>
+                    {/* Icône type */}
+                    <div style={{ width:36, height:36, borderRadius:10, background:`${TYPE_COLOR[t.type]||"#00C896"}18`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16, flexShrink:0 }}>
+                      {TYPE_ICON[t.type]||"💳"}
+                    </div>
+                    {/* Info */}
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ fontSize:13, fontWeight:700 }}>
+                        {TYPE_LABEL[t.type]} <span style={{ color:OP_COLORS[t.operateur] }}>{t.operateur}</span>
+                      </div>
+                      <div style={{ fontSize:11, color:T.sub }}>
+                        👷 {agNom} · {t.heure||""}
+                      </div>
+                    </div>
+                    {/* Montant + frais */}
+                    <div style={{ textAlign:"right", flexShrink:0 }}>
+                      <div style={{ fontWeight:900, color:TYPE_COLOR[t.type]||"#00C896", fontSize:14 }}>{fF(t.montant)}</div>
+                      {t.commission>0 && <div style={{ fontSize:11, color:"#FFB800", fontWeight:700 }}>frais {fF(t.commission)}</div>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
         </div>)}
 
         {/* ══════════════ DETAIL AGENT (PATRON) ═════════════════════════ */}
