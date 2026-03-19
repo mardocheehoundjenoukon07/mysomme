@@ -819,7 +819,7 @@ export default function CashPoint() {
   const [pendingCount,setPendingCount]= useState(0);
   const [showReport,  setShowReport]  = useState(false);
   const [showCloture, setShowCloture] = useState(false);
-  const [clotureInputs, setClotureInputs] = useState({ MTN:"", MOOV:"", Celtiis:"" });
+  const [clotureInputs, setClotureInputs] = useState({ cash:"", MTN:"", MOOV:"", Celtiis:"" });
   const [clotureData,   setClotureData]   = useState(null); // résultats calculés
   const [retraitDist, setRetraitDist] = useState(false);
   const [floats,      setFloats]      = useState({ MTN:null, MOOV:null, Celtiis:null });
@@ -1078,10 +1078,7 @@ export default function CashPoint() {
     const pointMatin=cashDepart!==null&&momoDepart!==null?cashDepart+momoDepart:null;
     const pointSoir=pointMatin!==null?pointMatin+frais:null;  // théorique
     const gain=frais;
-    const pointReel=cashActuel!==null?(cashActuel+(momoA||0)):null;
-    const ecart=pointReel!==null&&pointSoir!==null?pointReel-pointSoir:null;
-    const ecartDiag=ecart===null?null:ecart>500?"⚠️ Argent bloqué — client n'a pas retiré":ecart<-500?"🚨 Manquant — agent a payé sans confirmation dépôt":null;
-    // ── Unités vendues (si clôture saisie) ──────────────────────────────
+        // ── Unités vendues (si clôture saisie) ──────────────────────────────
     const unitesParOp={};
     let totalUnites=null;
     if (fl) {
@@ -1097,7 +1094,7 @@ export default function CashPoint() {
       if (hasAny) totalUnites=Object.values(unitesParOp).reduce((s,v)=>s+v.unites,0);
     }
     // ────────────────────────────────────────────────────────────────────
-    return { depots:deps,retraits:rets,fraisRetrait:frais,nbOps:txs.length,lastOp:txs[0]?.heure||null,cashDepart,cashActuel,mtnActuel:mtnA,moovActuel:moovA,celtiisActuel:celtA,momoActuel:momoA,pointTotal:cashActuel!==null?cashActuel+momoA:null,pointMatin,pointSoir,pointReel,ecart,ecartDiag,gain,unitesParOp,totalUnites,fl };
+    return { depots:deps,retraits:rets,fraisRetrait:frais,nbOps:txs.length,lastOp:txs[0]?.heure||null,cashDepart,cashActuel,mtnActuel:mtnA,moovActuel:moovA,celtiisActuel:celtA,momoActuel:momoA,pointTotal:cashActuel!==null?cashActuel+momoA:null,pointMatin,pointSoir,gain,unitesParOp,totalUnites,fl };
   }
 
   // ── GARDES ──────────────────────────────────────────────────────────────────
@@ -1185,10 +1182,6 @@ export default function CashPoint() {
             const agentStats=agents.map(ag=>getAgentStats(ag.id));
             const totalMatin=agentStats.reduce((s,st)=>s+(st.pointMatin||0),0);
             const totalSoir=totalMatin+totalFrais;
-            const totalReel=agentStats.reduce((s,st)=>s+(st.pointReel||0),0);
-            const totalEcart=totalReel&&totalSoir?totalReel-totalSoir:null;
-            const nbAlerte=agentStats.filter(st=>st.ecart!==null&&Math.abs(st.ecart)>500).length;
-            const ecartColor=totalEcart===null?"#4A5060":Math.abs(totalEcart)<=500?"#00C896":totalEcart>0?"#FFB800":"#E63946";
             const totalUnites=agentStats.reduce((s,st)=>s+(st.totalUnites||0),0);
             const nbClotures=agentStats.filter(st=>st.totalUnites!==null).length;
             return (<div style={{ marginBottom:20 }}>
@@ -1214,18 +1207,7 @@ export default function CashPoint() {
                 <div style={{ fontSize:24, fontWeight:900, color:"#00C896" }}>{fF(totalSoir)}</div>
               </div>
               {/* Écart global */}
-              {totalEcart!==null&&(<div style={{ background:`${ecartColor}12`, borderRadius:14, padding:"12px 16px", border:`1px solid ${ecartColor}30`, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                <div>
-                  <div style={{ fontSize:10, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:3 }}>📐 ÉCART GLOBAL</div>
-                  <div style={{ fontSize:12, fontWeight:700, color:ecartColor }}>
-                    {Math.abs(totalEcart)<=500?"✅ Équipe à l'équilibre":totalEcart>0?"⚠️ Dépôts bloqués chez des agents":"🚨 Manquant — vérifier confirmation dépôt dans l'équipe"}
-                    {nbAlerte>0&&<span style={{ marginLeft:6, background:`${ecartColor}25`, borderRadius:6, padding:"2px 8px", fontSize:10 }}>{nbAlerte} agent{nbAlerte>1?"s":""} concerné{nbAlerte>1?"s":""}</span>}
-                  </div>
-                </div>
-                <div style={{ textAlign:"right" }}>
-                  <div style={{ fontSize:20, fontWeight:900, color:ecartColor }}>{totalEcart>0?"+":""}{fF(totalEcart)}</div>
-                </div>
-              </div>)}
+
               {/* Unités vendues total équipe */}
               {nbClotures>0&&(<div style={{ background:"#7B2FBE12", borderRadius:14, padding:"12px 16px", border:"1px solid #7B2FBE30", display:"flex", justifyContent:"space-between", alignItems:"center", marginTop:10 }}>
                 <div>
@@ -1260,7 +1242,7 @@ export default function CashPoint() {
                   <span style={{ color:T.sub, fontSize:16 }}>›</span>
                 </div>
               </div>
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom: s.ecart!==null?8:0 }}>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:8 }}>
                 <div style={{ background:T.hero, borderRadius:10, padding:"10px 12px" }}>
                   <div style={{ fontSize:10, color:T.sub, marginBottom:3 }}>🌅 PT MATIN</div>
                   <div style={{ fontSize:14, fontWeight:900, color:T.text }}>{s.pointMatin!==null?fF(s.pointMatin):"—"}</div>
@@ -1270,14 +1252,6 @@ export default function CashPoint() {
                   <div style={{ fontSize:14, fontWeight:900, color:"#FFB800" }}>+{fF(s.fraisRetrait)}</div>
                 </div>
               </div>
-              {s.ecart!==null&&(<div style={{ background:`${s.ecart>500?"#FFB800":s.ecart<-500?"#E63946":"#00C896"}12`, borderRadius:10, padding:"8px 12px", border:`1px solid ${s.ecart>500?"#FFB80030":s.ecart<-500?"#E6394630":"#00C89625"}`, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                <div style={{ fontSize:11, fontWeight:700, color:s.ecart>500?"#FFB800":s.ecart<-500?"#E63946":"#00C896" }}>
-                  {s.ecart>500?"⚠️ Argent bloqué":s.ecart<-500?"🚨 Manquant":"✅ Équilibré"}
-                </div>
-                <div style={{ fontSize:13, fontWeight:900, color:s.ecart>500?"#FFB800":s.ecart<-500?"#E63946":"#00C896" }}>
-                  {s.ecart>0?"+":""}{fF(s.ecart)}
-                </div>
-              </div>)}
             </div>);
           })}
 
@@ -1354,28 +1328,16 @@ export default function CashPoint() {
                 </div>
               </div>
               {/* Point du soir */}
-              <div style={{ background:"linear-gradient(135deg,#00C89618,#00A5FF12)", border:"1px solid #00C89635", borderRadius:16, padding:16, marginBottom:s.ecart!==null?8:0 }}>
+              <div style={{ background:"linear-gradient(135deg,#00C89618,#00A5FF12)", border:"1px solid #00C89635", borderRadius:16, padding:16, marginBottom:12 }}>
                 <div style={{ fontSize:10, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:10 }}>🌙 POINT DU SOIR PRÉVU</div>
                 <div style={{ fontSize:11, color:T.sub, marginBottom:10 }}>
-                  {fF(s.pointMatin!==null?s.pointMatin:0)} + {fF(s.gain)} frais
+                  {fF(s.pointMatin!==null?s.pointMatin:0)} + {fF(s.gain)} F de frais
                 </div>
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", background:T.card, borderRadius:10, padding:"12px 14px", border:"1px solid #00C89625" }}>
                   <span style={{ fontSize:14, fontWeight:800 }}>Total clôture</span>
                   <span style={{ fontSize:24, fontWeight:900, color:"#00C896" }}>{s.pointSoir!==null?fF(s.pointSoir):"—"}</span>
                 </div>
               </div>
-              {/* Écart */}
-              {s.ecart!==null&&(<div style={{ background:`${s.ecart>500?"#FFB800":s.ecart<-500?"#E63946":"#00C896"}12`, border:`1px solid ${s.ecart>500?"#FFB80030":s.ecart<-500?"#E6394630":"#00C89625"}`, borderRadius:16, padding:16 }}>
-                <div style={{ fontSize:10, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:8 }}>📐 ÉCART</div>
-                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                  <div style={{ fontSize:12, fontWeight:700, color:s.ecart>500?"#FFB800":s.ecart<-500?"#E63946":"#00C896" }}>
-                    {s.ecart>500?"⚠️ Argent bloqué — client n'a pas retiré":s.ecart<-500?"🚨 Manquant — vérifier confirmation dépôt":"✅ Équilibré"}
-                  </div>
-                  <div style={{ fontSize:20, fontWeight:900, color:s.ecart>500?"#FFB800":s.ecart<-500?"#E63946":"#00C896" }}>
-                    {s.ecart>0?"+":""}{fF(s.ecart)}
-                  </div>
-                </div>
-              </div>)}
             </div>
 
             {/* Unités vendues — si clôture saisie */}
@@ -1478,19 +1440,10 @@ export default function CashPoint() {
             const fraisJour=agentTxs.filter(t=>t.type==="retrait").reduce((s,t)=>s+Number(t.commission),0);
             const momoDepart=floats?(Number(floats.MTN||0)+Number(floats.MOOV||0)+Number(floats.Celtiis||0)):null;
             const ptMatin=capitalCash!==null&&momoDepart!==null?capitalCash+momoDepart:null;
-            const ptSoir=ptMatin!==null?ptMatin+fraisJour:null; // théorique
+            const ptSoir=ptMatin!==null?ptMatin+fraisJour:null;
             if (ptMatin===null) return null;
-            // Point réel = ce qu'il y a réellement en ce moment
-            const cashAct=calcCashActuel();
-            const mtnAct=calcFloatActuel("MTN");
-            const moovAct=calcFloatActuel("MOOV");
-            const celtAct=calcFloatActuel("Celtiis");
-            const ptReel=cashAct!==null?(cashAct+(mtnAct||0)+(moovAct||0)+(celtAct||0)):null;
-            const ecart=ptReel!==null&&ptSoir!==null?ptReel-ptSoir:null;
-            const ecartColor=ecart===null?"#4A5060":Math.abs(ecart)<=500?"#00C896":ecart>0?"#FFB800":"#E63946";
-            const ecartMsg=ecart===null?null:Math.abs(ecart)<=500?"✅ Tout est correct":ecart>0?"⚠️ Argent bloqué — client n'a pas retiré":"🚨 Manquant — agent a payé sans confirmation dépôt";
             return (<div style={{ marginBottom:14 }}>
-              {/* Ligne 1 : Point matin + Gain */}
+              {/* Point matin + Frais */}
               <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:10 }}>
                 <div style={{ background:T.card, borderRadius:14, padding:"14px 16px", border:`1px solid ${T.border}` }}>
                   <div style={{ fontSize:10, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:6 }}>🌅 POINT DU MATIN</div>
@@ -1500,28 +1453,17 @@ export default function CashPoint() {
                 <div style={{ background:"#FFB80012", borderRadius:14, padding:"14px 16px", border:"1px solid #FFB80030" }}>
                   <div style={{ fontSize:10, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:6 }}>💰 FRAIS DE RETRAIT</div>
                   <div style={{ fontSize:18, fontWeight:900, color:"#FFB800" }}>+{fF(fraisJour)}</div>
-                  <div style={{ fontSize:10, color:T.faint, marginTop:3 }}>Frais de retrait collectés</div>
+                  <div style={{ fontSize:10, color:T.faint, marginTop:3 }}>Collectés aujourd'hui</div>
                 </div>
               </div>
-              {/* Ligne 2 : Point soir théorique */}
-              <div style={{ background:"linear-gradient(135deg,#00C89615,#00A5FF12)", borderRadius:14, padding:"13px 16px", border:"1px solid #00C89630", display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+              {/* Point soir théorique */}
+              <div style={{ background:"linear-gradient(135deg,#00C89615,#00A5FF12)", borderRadius:14, padding:"13px 16px", border:"1px solid #00C89630", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                 <div>
                   <div style={{ fontSize:10, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:3 }}>🌙 POINT DU SOIR PRÉVU</div>
                   <div style={{ fontSize:11, color:T.sub }}>{fF(ptMatin)} + {fF(fraisJour)}</div>
                 </div>
                 <div style={{ fontSize:22, fontWeight:900, color:"#00C896" }}>{fF(ptSoir)}</div>
               </div>
-              {/* Ligne 3 : Écart — diagnostic */}
-              {ecart!==null&&(<div style={{ background:`${ecartColor}12`, borderRadius:14, padding:"12px 16px", border:`1px solid ${ecartColor}30`, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                <div>
-                  <div style={{ fontSize:10, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:3 }}>📐 ÉCART</div>
-                  <div style={{ fontSize:12, color:ecartColor, fontWeight:700 }}>{ecartMsg}</div>
-                </div>
-                <div style={{ textAlign:"right" }}>
-                  <div style={{ fontSize:20, fontWeight:900, color:ecartColor }}>{ecart>0?"+":""}{fF(ecart)}</div>
-                  <div style={{ fontSize:10, color:T.faint }}>Réel − Théorique</div>
-                </div>
-              </div>)}
             </div>);
           })()}
 
@@ -1593,7 +1535,7 @@ export default function CashPoint() {
 
           {/* Bouton clôture journée */}
           {isToday && capitalCash!==null && (
-            <button onClick={()=>{ setClotureInputs({MTN:"",MOOV:"",Celtiis:""}); setClotureData(null); setShowCloture(true); }}
+            <button onClick={()=>{ setClotureInputs({cash:"",MTN:"",MOOV:"",Celtiis:""}); setClotureData(null); setShowCloture(true); }}
               style={{ width:"100%", padding:16, borderRadius:16, background:"linear-gradient(135deg,#7B2FBE,#9B5FDE)", border:"none", color:"#fff", fontWeight:800, fontSize:14, cursor:"pointer", marginBottom:14, display:"flex", alignItems:"center", justifyContent:"center", gap:10, boxShadow:"0 4px 16px #7B2FBE40" }}>
               <span style={{ fontSize:20 }}>🌙</span> Clôturer la journée
             </button>
@@ -1602,37 +1544,58 @@ export default function CashPoint() {
           {/* Résultats clôture si disponibles */}
           {clotureData && (
             <div style={{ background:"linear-gradient(135deg,#7B2FBE15,#00C89612)", borderRadius:16, padding:18, marginBottom:14, border:"1px solid #7B2FBE30" }}>
-              <div style={{ fontWeight:800, fontSize:13, marginBottom:14 }}>🌙 Bilan de clôture</div>
-              {OPS.map(op=>{
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
+                <div style={{ fontWeight:800, fontSize:13 }}>🌙 Bilan de clôture</div>
+                {clotureData.ptAttendu&&<div style={{ fontSize:11, color:T.sub }}>Attendu : {fF(clotureData.ptAttendu)}</div>}
+              </div>
+
+              {/* Résumé total */}
+              {clotureData.ptAttendu&&(()=>{
+                const diff=clotureData.totalSaisi-clotureData.ptAttendu;
+                const dc=Math.abs(diff)<=500?"#00C896":diff>0?"#FFB800":"#E63946";
+                return (<div style={{ background:`${dc}12`, borderRadius:12, padding:"12px 14px", marginBottom:14, border:`1px solid ${dc}30`, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                  <div>
+                    <div style={{ fontSize:12, fontWeight:700, color:dc }}>
+                      {Math.abs(diff)<=500?"✅ Point équilibré":diff>0?"⚠️ Excédent — client n'a pas retiré":"🚨 Manquant — vérifier confirmations dépôt"}
+                    </div>
+                    <div style={{ fontSize:10, color:T.faint, marginTop:2 }}>Saisi : {fF(clotureData.totalSaisi)} · Écart : {diff>0?"+":""}{fF(diff)}</div>
+                  </div>
+                  <div style={{ fontSize:20, fontWeight:900, color:dc }}>{diff>0?"+":""}{fF(diff)}</div>
+                </div>);
+              })()}
+
+              {/* Unités vendues par opérateur */}
+              <div style={{ fontSize:10, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:10 }}>📦 UNITÉS VENDUES PAR RÉSEAU</div>
+              {OPS.map((op,i)=>{
                 const d=clotureData[op];
                 if (!d) return null;
                 const unitColor=d.unites<0?"#E63946":d.unites===0?"#4A5060":"#9B5FDE";
-                return (<div key={op} style={{ marginBottom:10, paddingBottom:10, borderBottom:`1px solid #7B2FBE20` }}>
+                return (<div key={op} style={{ marginBottom:i<OPS.length-1?12:0, paddingBottom:i<OPS.length-1?12:0, borderBottom:i<OPS.length-1?`1px solid #7B2FBE20`:"none" }}>
                   <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
                     <div style={{ display:"flex", alignItems:"center", gap:8 }}>
                       <div style={{ width:28, height:28, borderRadius:8, background:`${OP_COLORS[op]}20`, border:`1px solid ${OP_COLORS[op]}40`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:9, fontWeight:900, color:OP_COLORS[op] }}>{op}</div>
                       <span style={{ fontSize:13, fontWeight:700 }}>{op}</span>
                     </div>
-                    <div style={{ textAlign:"right" }}>
-                      <div style={{ fontSize:14, fontWeight:900, color:unitColor }}>
-                        {d.unites>0?"-":""}{fF(Math.abs(d.unites))} vendus
-                      </div>
+                    <div style={{ fontSize:15, fontWeight:900, color:unitColor }}>
+                      {d.unites>0?fF(d.unites):d.unites<0?`⚠️ +${fF(Math.abs(d.unites))}`:"0 F"}
                     </div>
                   </div>
                   <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:6 }}>
-                    {[["Théorique",d.theorique,"#4F8EF7"],["Réel",d.reel,OP_COLORS[op]],["Écart",d.ecart,d.ecart<0?"#E63946":d.ecart>0?"#FFB800":"#00C896"]].map(([lbl,val,col])=>(
+                    {[["Théorique",d.theorique,"#4F8EF7"],["Réel soir",d.reel,OP_COLORS[op]],["Vendus",Math.max(0,d.unites),unitColor]].map(([lbl,val,col])=>(
                       <div key={lbl} style={{ background:T.hero, borderRadius:8, padding:"6px 8px", textAlign:"center" }}>
                         <div style={{ fontSize:9, color:T.faint, marginBottom:2 }}>{lbl}</div>
-                        <div style={{ fontSize:11, fontWeight:800, color:col }}>{val>=0?fF(val):`-${fF(Math.abs(val))}`}</div>
+                        <div style={{ fontSize:11, fontWeight:800, color:col }}>{fF(val)}</div>
                       </div>
                     ))}
                   </div>
                 </div>);
               })}
-              <div style={{ background:"#00C89612", borderRadius:12, padding:"12px 14px", marginTop:6 }}>
-                <div style={{ fontSize:11, color:T.sub, marginBottom:4 }}>Total unités vendues</div>
+
+              {/* Total */}
+              <div style={{ background:"#9B5FDE18", borderRadius:12, padding:"12px 14px", marginTop:14, border:"1px solid #9B5FDE30", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                <div style={{ fontSize:12, fontWeight:700, color:"#9B5FDE" }}>Total unités vendues</div>
                 <div style={{ fontSize:20, fontWeight:900, color:"#9B5FDE" }}>
-                  {fF(OPS.reduce((s,op)=>s+(clotureData[op]?.unites||0),0))} F
+                  {fF(OPS.reduce((s,op)=>s+Math.max(0,clotureData[op]?.unites||0),0))}
                 </div>
               </div>
             </div>
@@ -1982,57 +1945,103 @@ export default function CashPoint() {
         <div onClick={e=>e.stopPropagation()} style={{ background:T.card, borderRadius:"22px 22px 0 0", padding:"20px 18px 48px", width:"100%", maxHeight:"92vh", overflowY:"auto", border:`1px solid ${T.border2}` }}>
           <div style={{ width:36, height:4, background:T.border2, borderRadius:2, margin:"0 auto 18px" }} />
           <div style={{ fontWeight:900, fontSize:18, marginBottom:4 }}>🌙 Clôture de journée</div>
-          <div style={{ fontSize:12, color:T.sub, marginBottom:20 }}>Saisis ton solde réel sur chaque réseau pour calculer les unités vendues.</div>
+          <div style={{ fontSize:12, color:T.sub, marginBottom:6 }}>Saisis ce que tu as réellement ce soir.</div>
 
+          {/* Point du soir attendu */}
+          {(()=>{
+            const fraisJour=agentTxs.filter(t=>t.type==="retrait").reduce((s,t)=>s+Number(t.commission),0);
+            const momoD=floats?(Number(floats.MTN||0)+Number(floats.MOOV||0)+Number(floats.Celtiis||0)):0;
+            const ptMatin=capitalCash!==null?capitalCash+momoD:null;
+            const ptSoir=ptMatin!==null?ptMatin+fraisJour:null;
+            if (!ptSoir) return null;
+            return (<div style={{ background:"linear-gradient(135deg,#00C89615,#00A5FF12)", borderRadius:12, padding:"12px 14px", marginBottom:20, border:"1px solid #00C89630" }}>
+              <div style={{ fontSize:10, color:T.sub, fontWeight:700, marginBottom:4 }}>🎯 POINT DU SOIR ATTENDU</div>
+              <div style={{ fontSize:20, fontWeight:900, color:"#00C896" }}>{fF(ptSoir)}</div>
+              <div style={{ fontSize:10, color:T.faint, marginTop:2 }}>Cash + tous les comptes MoMo doivent donner ce total</div>
+            </div>);
+          })()}
+
+          {/* Cash liquide du soir */}
+          <div style={{ marginBottom:16 }}>
+            <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8 }}>
+              <div style={{ width:30, height:30, borderRadius:8, background:"#00C89620", border:"1px solid #00C89640", display:"flex", alignItems:"center", justifyContent:"center", fontSize:13 }}>💵</div>
+              <div>
+                <div style={{ fontSize:13, fontWeight:700 }}>Cash liquide</div>
+                <div style={{ fontSize:10, color:T.faint }}>Départ : {fF(capitalCash||0)}</div>
+              </div>
+            </div>
+            <input type="number" placeholder="Cash réel ce soir"
+              value={clotureInputs.cash}
+              onChange={e=>setClotureInputs(p=>({...p,cash:e.target.value}))}
+              style={{ width:"100%", background:T.input, border:`1px solid ${clotureInputs.cash?"#00C896":T.border}`, borderRadius:12, padding:"13px 16px", color:T.text, fontSize:15, fontWeight:700, outline:"none", boxSizing:"border-box" }} />
+          </div>
+
+          {/* Soldes MoMo du soir */}
           {OPS.map(op=>(
             <div key={op} style={{ marginBottom:16 }}>
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
-                <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                  <div style={{ width:30, height:30, borderRadius:8, background:`${OP_COLORS[op]}20`, border:`1px solid ${OP_COLORS[op]}40`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:9, fontWeight:900, color:OP_COLORS[op] }}>{op}</div>
-                  <div>
-                    <div style={{ fontSize:13, fontWeight:700 }}>{op}</div>
-                    <div style={{ fontSize:10, color:T.faint }}>
-                      Théorique : {floats?.[op]!==null?fF(calcFloatActuel(op)):"—"}
-                    </div>
-                  </div>
+              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8 }}>
+                <div style={{ width:30, height:30, borderRadius:8, background:`${OP_COLORS[op]}20`, border:`1px solid ${OP_COLORS[op]}40`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:9, fontWeight:900, color:OP_COLORS[op] }}>{op}</div>
+                <div>
+                  <div style={{ fontSize:13, fontWeight:700 }}>{op}</div>
+                  <div style={{ fontSize:10, color:T.faint }}>Théorique : {floats?.[op]!==null?fF(calcFloatActuel(op)):"—"}</div>
                 </div>
               </div>
-              <input type="number" placeholder={`Solde réel ${op} ce soir`}
+              <input type="number" placeholder={`Solde ${op} réel ce soir`}
                 value={clotureInputs[op]}
                 onChange={e=>setClotureInputs(p=>({...p,[op]:e.target.value}))}
                 style={{ width:"100%", background:T.input, border:`1px solid ${clotureInputs[op]?OP_COLORS[op]:T.border}`, borderRadius:12, padding:"13px 16px", color:T.text, fontSize:15, fontWeight:700, outline:"none", boxSizing:"border-box" }} />
             </div>
           ))}
 
+          {/* Total saisi en temps réel */}
+          {(clotureInputs.cash!==""||OPS.some(op=>clotureInputs[op]!==""))&&(()=>{
+            const fraisJour=agentTxs.filter(t=>t.type==="retrait").reduce((s,t)=>s+Number(t.commission),0);
+            const momoD=floats?(Number(floats.MTN||0)+Number(floats.MOOV||0)+Number(floats.Celtiis||0)):0;
+            const ptAttendu=capitalCash!==null?capitalCash+momoD+fraisJour:null;
+            const totalSaisi=(clotureInputs.cash!==""?Number(clotureInputs.cash):0)+
+              OPS.reduce((s,op)=>s+(clotureInputs[op]!==""?Number(clotureInputs[op]):0),0);
+            const diff=ptAttendu!==null?totalSaisi-ptAttendu:null;
+            const diffColor=diff===null?"#4A5060":Math.abs(diff)<=500?"#00C896":diff>0?"#FFB800":"#E63946";
+            const diffMsg=diff===null?null:Math.abs(diff)<=500?"✅ Équilibré":diff>0?"⚠️ Excédent (client n'a pas retiré)":"🚨 Manquant (vérifier confirmations)";
+            return (<div style={{ background:`${diffColor}12`, borderRadius:12, padding:"12px 14px", marginBottom:16, border:`1px solid ${diffColor}30` }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:4 }}>
+                <div style={{ fontSize:12, fontWeight:700, color:diffColor }}>{diffMsg||"Total saisi"}</div>
+                <div style={{ fontSize:18, fontWeight:900, color:diffColor }}>{fF(totalSaisi)}</div>
+              </div>
+              {diff!==null&&<div style={{ fontSize:10, color:T.faint }}>Attendu : {fF(ptAttendu)} · Écart : {diff>0?"+":""}{fF(diff)}</div>}
+            </div>);
+          })()}
+
           <button onClick={()=>{
-            // Calculer les unités vendues pour chaque opérateur
-            const result={};
+            const fraisJour=agentTxs.filter(t=>t.type==="retrait").reduce((s,t)=>s+Number(t.commission),0);
+            const momoD=floats?(Number(floats.MTN||0)+Number(floats.MOOV||0)+Number(floats.Celtiis||0)):0;
+            const ptAttendu=capitalCash!==null?capitalCash+momoD+fraisJour:null;
+            // Calculer les unités vendues par opérateur
+            const result={ ptAttendu, totalSaisi:0 };
             OPS.forEach(op=>{
-              const theorique=calcFloatActuel(op); // ce qu'il devrait avoir
+              const theorique=calcFloatActuel(op);
               const reel=clotureInputs[op]!==""?Number(clotureInputs[op]):null;
               if (theorique===null||reel===null) return;
-              const unites=theorique-reel; // positif = vendu, négatif = anomalie
-              const ecart=reel-theorique;
-              result[op]={ theorique, reel, unites, ecart };
+              const unites=theorique-reel; // positif = unités vendues
+              result[op]={ theorique, reel, unites };
             });
+            const cashReel=clotureInputs.cash!==""?Number(clotureInputs.cash):null;
+            result.cashReel=cashReel;
+            result.totalSaisi=(cashReel||0)+OPS.reduce((s,op)=>s+(result[op]?.reel||0),0);
             setClotureData(result);
-            // Sauvegarder les soldes réels dans Supabase pour le patron
+            // Sauvegarder dans Supabase
             saveFloat({
-              agent_id: agent.id,
-              patron_id: agent.patron_id,
-              date: selectedDate,
-              cash: capitalCash||0,
-              float_mtn: floats?.MTN||null,
-              float_moov: floats?.MOOV||null,
-              float_celtiis: floats?.Celtiis||null,
-              float_mtn_reel: clotureInputs.MTN!==""?Number(clotureInputs.MTN):null,
-              float_moov_reel: clotureInputs.MOOV!==""?Number(clotureInputs.MOOV):null,
-              float_celtiis_reel: clotureInputs.Celtiis!==""?Number(clotureInputs.Celtiis):null,
+              agent_id:agent.id, patron_id:agent.patron_id, date:selectedDate,
+              cash:capitalCash||0,
+              float_mtn:floats?.MTN||null, float_moov:floats?.MOOV||null, float_celtiis:floats?.Celtiis||null,
+              float_mtn_reel:clotureInputs.MTN!==""?Number(clotureInputs.MTN):null,
+              float_moov_reel:clotureInputs.MOOV!==""?Number(clotureInputs.MOOV):null,
+              float_celtiis_reel:clotureInputs.Celtiis!==""?Number(clotureInputs.Celtiis):null,
             });
             setShowCloture(false);
-          }} disabled={OPS.every(op=>clotureInputs[op]==="")}
-            style={{ width:"100%", padding:16, borderRadius:14, background:OPS.every(op=>clotureInputs[op]==="")?T.hero:"linear-gradient(135deg,#7B2FBE,#9B5FDE)", border:"none", color:OPS.every(op=>clotureInputs[op]==="")?T.faint:"#fff", fontWeight:800, fontSize:15, cursor:"pointer", marginBottom:10, boxShadow:"0 4px 16px #7B2FBE30" }}>
-            🌙 Calculer les unités vendues
+          }} disabled={clotureInputs.cash===""&&OPS.every(op=>clotureInputs[op]==="")}
+            style={{ width:"100%", padding:16, borderRadius:14, background:(clotureInputs.cash===""&&OPS.every(op=>clotureInputs[op]==="")?T.hero:"linear-gradient(135deg,#7B2FBE,#9B5FDE)"), border:"none", color:(clotureInputs.cash===""&&OPS.every(op=>clotureInputs[op]==="")?T.faint:"#fff"), fontWeight:800, fontSize:15, cursor:"pointer", marginBottom:10, boxShadow:"0 4px 16px #7B2FBE30" }}>
+            🌙 Valider la clôture
           </button>
           <button onClick={()=>setShowCloture(false)} style={{ width:"100%", padding:12, borderRadius:12, background:"transparent", border:`1px solid ${T.border}`, color:T.sub, fontSize:13, cursor:"pointer" }}>Annuler</button>
         </div>
