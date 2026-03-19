@@ -44,10 +44,10 @@ async function verifyOTP(telephone, code) {
 const lsGet = k => { try { const v=localStorage.getItem(k); return v?JSON.parse(v):null; } catch { return null; } };
 const lsSet = (k,v) => { try { localStorage.setItem(k,JSON.stringify(v)); } catch {} };
 const lsDel = k => { try { localStorage.removeItem(k); } catch {} };
-const txKey    = (date,uid) => `cp_txs_${uid}_${date}`;
-const pendKey  = uid        => `cp_pend_${uid}`;
-const floatKey = (date,uid) => `cp_float_${uid}_${date}`;
-const cashKey  = (date,uid) => `cp_cash_${uid}_${date}`;
+const txKey    = (date,uid) => `ks_txs_${uid}_${date}`;
+const pendKey  = uid        => `ks_pend_${uid}`;
+const floatKey = (date,uid) => `ks_float_${uid}_${date}`;
+const cashKey  = (date,uid) => `ks_cash_${uid}_${date}`;
 
 // ─── DATE (UTC+1 Bénin) ───────────────────────────────────────────────────────
 function todayStr() {
@@ -162,27 +162,27 @@ async function savePatron(p) {
 }
 async function fetchAgents(patronId) {
   try {
-    const r=await fetch(`${SUPA_URL}/rest/v1/cashpoint_agents?patron_id=eq.${patronId}&select=*&order=created_at.asc`,{headers:H()});
+    const r=await fetch(`${SUPA_URL}/rest/v1/kashio_agents?patron_id=eq.${patronId}&select=*&order=created_at.asc`,{headers:H()});
     return r.ok?await r.json():[];
   } catch { return []; }
 }
 async function fetchAgent(tel) {
   try {
-    const r=await fetch(`${SUPA_URL}/rest/v1/cashpoint_agents?telephone=eq.${tel}&select=*`,{headers:H()});
+    const r=await fetch(`${SUPA_URL}/rest/v1/kashio_agents?telephone=eq.${tel}&select=*`,{headers:H()});
     if (!r.ok) return null; const d=await r.json(); return d[0]||null;
   } catch { return null; }
 }
 async function saveAgent(a) {
   try {
-    const r=await fetch(`${SUPA_URL}/rest/v1/cashpoint_agents`,{method:"POST",headers:H(),body:JSON.stringify(a)});
+    const r=await fetch(`${SUPA_URL}/rest/v1/kashio_agents`,{method:"POST",headers:H(),body:JSON.stringify(a)});
     return r.ok?(await r.json())[0]:null;
   } catch { return null; }
 }
 async function deleteAgent(agentId) {
   try {
-    await fetch(`${SUPA_URL}/rest/v1/cashpoint_transactions?agent_id=eq.${agentId}`,{method:"DELETE",headers:H()});
-    await fetch(`${SUPA_URL}/rest/v1/cashpoint_floats?agent_id=eq.${agentId}`,{method:"DELETE",headers:H()});
-    await fetch(`${SUPA_URL}/rest/v1/cashpoint_agents?id=eq.${agentId}`,{method:"DELETE",headers:H()});
+    await fetch(`${SUPA_URL}/rest/v1/kashio_transactions?agent_id=eq.${agentId}`,{method:"DELETE",headers:H()});
+    await fetch(`${SUPA_URL}/rest/v1/kashio_floats?agent_id=eq.${agentId}`,{method:"DELETE",headers:H()});
+    await fetch(`${SUPA_URL}/rest/v1/kashio_agents?id=eq.${agentId}`,{method:"DELETE",headers:H()});
     return true;
   } catch { return false; }
 }
@@ -209,7 +209,7 @@ async function markInviteUsed(code, agentId) {
 // Transactions agent
 async function fetchAgentTxs(agentId, dateStr) {
   try {
-    const r=await fetch(`${SUPA_URL}/rest/v1/cashpoint_transactions?agent_id=eq.${agentId}&created_at=gte.${dateStr}T00:00:00+01:00&created_at=lte.${dateStr}T23:59:59+01:00&order=created_at.desc`,{headers:H()});
+    const r=await fetch(`${SUPA_URL}/rest/v1/kashio_transactions?agent_id=eq.${agentId}&created_at=gte.${dateStr}T00:00:00+01:00&created_at=lte.${dateStr}T23:59:59+01:00&order=created_at.desc`,{headers:H()});
     return r.ok?await r.json():[];
   } catch { return []; }
 }
@@ -217,19 +217,19 @@ async function saveTx(tx) {
   try {
     // ⚠️ Retirer les champs locaux non connus de Supabase
     const { localId, id, ...cleanTx } = tx;
-    const r=await fetch(`${SUPA_URL}/rest/v1/cashpoint_transactions`,{method:"POST",headers:H(),body:JSON.stringify(cleanTx)});
+    const r=await fetch(`${SUPA_URL}/rest/v1/kashio_transactions`,{method:"POST",headers:H(),body:JSON.stringify(cleanTx)});
     if (r.ok) return { ok:true, data:(await r.json())[0] };
     const err=await r.json().catch(()=>({}));
     return { ok:false, error: err.message||err.details||err.hint||`Erreur ${r.status}` };
   } catch(e) { return { ok:false, error:e.message||"Pas de connexion" }; }
 }
 async function deleteTx(id) {
-  try { await fetch(`${SUPA_URL}/rest/v1/cashpoint_transactions?id=eq.${id}`,{method:"DELETE",headers:H()}); } catch {}
+  try { await fetch(`${SUPA_URL}/rest/v1/kashio_transactions?id=eq.${id}`,{method:"DELETE",headers:H()}); } catch {}
 }
 // Float agent
 async function fetchFloat(agentId, date) {
   try {
-    const r=await fetch(`${SUPA_URL}/rest/v1/cashpoint_floats?agent_id=eq.${agentId}&date=eq.${date}&select=*`,{headers:H()});
+    const r=await fetch(`${SUPA_URL}/rest/v1/kashio_floats?agent_id=eq.${agentId}&date=eq.${date}&select=*`,{headers:H()});
     if (!r.ok) return null; const d=await r.json(); return d[0]||null;
   } catch { return null; }
 }
@@ -238,7 +238,7 @@ async function saveFloat(f) {
     // Garder seulement les colonnes connues de Supabase
     const { agent_id, patron_id, date, cash, float_mtn, float_moov, float_celtiis, float_mtn_reel, float_moov_reel, float_celtiis_reel } = f;
     const cleanFloat = { agent_id, patron_id, date, cash, float_mtn, float_moov, float_celtiis, float_mtn_reel, float_moov_reel, float_celtiis_reel };
-    const r=await fetch(`${SUPA_URL}/rest/v1/cashpoint_floats`,{
+    const r=await fetch(`${SUPA_URL}/rest/v1/kashio_floats`,{
       method:"POST",
       headers:{...H(),"Prefer":"return=representation,resolution=merge-duplicates"},
       body:JSON.stringify(cleanFloat)
@@ -261,7 +261,7 @@ async function fetchAllTxsForPatron(patronId, dateStr, agentIds) {
     if (agentIds && agentIds.length > 0) {
       const ids = agentIds.join(",");
       const r = await fetch(
-        `${SUPA_URL}/rest/v1/cashpoint_transactions?agent_id=in.(${ids})&created_at=gte.${dateStr}&created_at=lt.${nextDay}&order=created_at.desc`,
+        `${SUPA_URL}/rest/v1/kashio_transactions?agent_id=in.(${ids})&created_at=gte.${dateStr}&created_at=lt.${nextDay}&order=created_at.desc`,
         { headers: H() }
       );
       if (r.ok) {
@@ -272,7 +272,7 @@ async function fetchAllTxsForPatron(patronId, dateStr, agentIds) {
     }
     // Fallback par patron_id
     const r = await fetch(
-      `${SUPA_URL}/rest/v1/cashpoint_transactions?patron_id=eq.${patronId}&created_at=gte.${dateStr}&created_at=lt.${nextDay}&order=created_at.desc`,
+      `${SUPA_URL}/rest/v1/kashio_transactions?patron_id=eq.${patronId}&created_at=gte.${dateStr}&created_at=lt.${nextDay}&order=created_at.desc`,
       { headers: H() }
     );
     if (r.ok) {
@@ -289,7 +289,7 @@ async function fetchAllFloatsForPatron(patronId, dateStr, agentIds) {
     if (agentIds && agentIds.length > 0) {
       const ids = agentIds.join(",");
       const r = await fetch(
-        `${SUPA_URL}/rest/v1/cashpoint_floats?agent_id=in.(${ids})&date=eq.${dateStr}&select=*`,
+        `${SUPA_URL}/rest/v1/kashio_floats?agent_id=in.(${ids})&date=eq.${dateStr}&select=*`,
         { headers: H() }
       );
       if (r.ok) {
@@ -299,7 +299,7 @@ async function fetchAllFloatsForPatron(patronId, dateStr, agentIds) {
       }
     }
     const r = await fetch(
-      `${SUPA_URL}/rest/v1/cashpoint_floats?patron_id=eq.${patronId}&date=eq.${dateStr}&select=*`,
+      `${SUPA_URL}/rest/v1/kashio_floats?patron_id=eq.${patronId}&date=eq.${dateStr}&select=*`,
       { headers: H() }
     );
     if (r.ok) {
@@ -332,7 +332,7 @@ function PinPad({ title, subtitle, onSubmit, T, error }) {
   };
   return (
     <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", minHeight:"100vh", padding:24, background:T.bg }}>
-      <div style={{ width:56, height:56, borderRadius:16, background:"linear-gradient(135deg,#00C896,#00A5FF,#7B2FBE)", display:"flex", alignItems:"center", justifyContent:"center", marginBottom:22, fontWeight:900, fontSize:24, color:"#fff" }}>C</div>
+      <div style={{marginBottom:22}}><svg width="56" height="56" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" style={{flexShrink:0}}><defs><linearGradient id="kg56" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#00C896"/><stop offset="100%" stopColor="#00A5FF"/></linearGradient><linearGradient id="kd56" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#06090F"/><stop offset="100%" stopColor="#0D1828"/></linearGradient></defs><rect width="512" height="512" rx="109" fill="url(#kd56)"/><ellipse cx="256" cy="256" rx="140" ry="140" fill="url(#kg56)" opacity="0.06"/><rect x="164" y="130" width="44" height="252" rx="22" fill="url(#kg56)"/><path d="M 208 256 Q 284 200 356 138" fill="none" stroke="url(#kg56)" strokeWidth="44" strokeLinecap="round"/><path d="M 208 256 Q 284 312 356 374" fill="none" stroke="url(#kg56)" strokeWidth="44" strokeLinecap="round"/><circle cx="208" cy="256" r="26" fill="url(#kg56)" opacity="0.6"/><circle cx="208" cy="256" r="14" fill="url(#kg56)"/></svg></div>
       <div style={{ fontWeight:900, fontSize:24, marginBottom:6, textAlign:"center", color:T.text }}>{title}</div>
       <div style={{ fontSize:13, color:T.sub, marginBottom:36, textAlign:"center" }}>{subtitle}</div>
       <div style={{ display:"flex", gap:18, marginBottom:36 }}>
@@ -395,7 +395,7 @@ function AuthScreen({ T, dark, setDark, onPatronLogin, onAgentLogin }) {
     const patron={telephone:tel,nom:form.nom.trim(),nom_entreprise:form.entreprise.trim(),registre_commerce:form.rc.trim(),pays:form.pays,pin:pinHash,phone_verified:true};
     const result=await savePatron(patron); setLoading(false);
     if (!result.success) { setError(`❌ ${result.error}`); setStep(3); return; }
-    lsSet("cp_patron",{...result.data,pin:pinHash});
+    lsSet("ks_patron",{...result.data,pin:pinHash});
     onPatronLogin({...result.data,pin:pinHash});
   }
   // ── PATRON CONNEXION ────────────────────────────────────────────────────────
@@ -405,10 +405,10 @@ function AuthScreen({ T, dark, setDark, onPatronLogin, onAgentLogin }) {
     setLoading(true); setError("");
     const patron=await fetchPatron(tel); setLoading(false);
     if (!patron) { setError("Numéro introuvable."); return; }
-    lsSet("cp_patron",patron); setStep("patron-pin"); setForm(f=>({...f,_patron:patron}));
+    lsSet("ks_patron",patron); setStep("patron-pin"); setForm(f=>({...f,_patron:patron}));
   }
   async function handlePatronPinLogin(p) {
-    const patron=form._patron||lsGet("cp_patron");
+    const patron=form._patron||lsGet("ks_patron");
     const pinHash=await hashPin(p);
     if (pinHash===patron.pin) onPatronLogin({...patron,pin:pinHash});
     else setError("Code PIN incorrect.");
@@ -450,7 +450,7 @@ function AuthScreen({ T, dark, setDark, onPatronLogin, onAgentLogin }) {
     if (saved) await markInviteUsed(form.code.trim().toUpperCase(),saved.id);
     setLoading(false);
     if (!saved) { setError("Erreur. Réessaie."); return; }
-    lsSet("cp_agent",{...saved,pin:pinHash});
+    lsSet("ks_agent",{...saved,pin:pinHash});
     onAgentLogin({...saved,pin:pinHash});
   }
   async function handleAgentLogin() {
@@ -459,10 +459,10 @@ function AuthScreen({ T, dark, setDark, onPatronLogin, onAgentLogin }) {
     setLoading(true); setError("");
     const ag=await fetchAgent(tel); setLoading(false);
     if (!ag) { setError("Numéro introuvable."); return; }
-    lsSet("cp_agent",ag); setStep("agent-pin-login"); setForm(f=>({...f,_agent:ag}));
+    lsSet("ks_agent",ag); setStep("agent-pin-login"); setForm(f=>({...f,_agent:ag}));
   }
   async function handleAgentPinLogin(p) {
-    const ag=form._agent||lsGet("cp_agent");
+    const ag=form._agent||lsGet("ks_agent");
     const pinHash=await hashPin(p);
     if (pinHash===ag.pin) onAgentLogin({...ag,pin:pinHash});
     else setError("Code PIN incorrect.");
@@ -481,8 +481,8 @@ function AuthScreen({ T, dark, setDark, onPatronLogin, onAgentLogin }) {
       <div style={{ width:"100%", maxWidth:400 }}>
         {/* Logo */}
         <div style={{ textAlign:"center", marginBottom:32 }}>
-          <div style={{ width:64, height:64, borderRadius:18, background:"linear-gradient(135deg,#00C896,#00A5FF)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:30, fontWeight:900, color:"#fff", margin:"0 auto 14px" }}>C</div>
-          <div style={{ fontWeight:900, fontSize:28, color:T.text }}>CashPoint</div>
+          <div style={{margin:"0 auto 14px", width:64}}><svg width="64" height="64" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" style={{flexShrink:0}}><defs><linearGradient id="kg64" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#00C896"/><stop offset="100%" stopColor="#00A5FF"/></linearGradient><linearGradient id="kd64" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#06090F"/><stop offset="100%" stopColor="#0D1828"/></linearGradient></defs><rect width="512" height="512" rx="112" fill="url(#kd64)"/><ellipse cx="256" cy="256" rx="140" ry="140" fill="url(#kg64)" opacity="0.06"/><rect x="164" y="130" width="44" height="252" rx="22" fill="url(#kg64)"/><path d="M 208 256 Q 284 200 356 138" fill="none" stroke="url(#kg64)" strokeWidth="44" strokeLinecap="round"/><path d="M 208 256 Q 284 312 356 374" fill="none" stroke="url(#kg64)" strokeWidth="44" strokeLinecap="round"/><circle cx="208" cy="256" r="26" fill="url(#kg64)" opacity="0.6"/><circle cx="208" cy="256" r="14" fill="url(#kg64)"/></svg></div>
+          <div style={{ fontWeight:900, fontSize:28, color:T.text }}>Kashio</div>
           <div style={{ fontSize:13, color:T.sub }}>Gestion POS pour les pros 🇧🇯</div>
         </div>
 
@@ -755,7 +755,7 @@ function AuthScreen({ T, dark, setDark, onPatronLogin, onAgentLogin }) {
             const saved=await saveAgent(agentData);
             setLoading(false);
             if (!saved) { setError("Erreur. Réessaie."); return; }
-            lsSet("cp_agent",{...saved,pin:pinHash});
+            lsSet("ks_agent",{...saved,pin:pinHash});
             onAgentLogin({...saved,pin:pinHash});
           }} />
         )}
@@ -771,7 +771,7 @@ function AuthScreen({ T, dark, setDark, onPatronLogin, onAgentLogin }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // ─── APP PRINCIPALE ───────────────────────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════════════════════
-export default function CashPoint() {
+export default function Kashio() {
   const [dark,setDark]     = useState(true);
   const T                  = dark ? DARK : LIGHT;
   const OP_BG              = dark ? OP_BG_D : OP_BG_L;
@@ -781,9 +781,9 @@ export default function CashPoint() {
   const desktop            = w >= 1024;
 
   // ── AUTH ────────────────────────────────────────────────────────────────────
-  const [patron,  setPatron]  = useState(lsGet("cp_patron"));
-  const [agent,   setAgent]   = useState(lsGet("cp_agent"));
-  const [locked,  setLocked]  = useState(!!lsGet("cp_patron")||!!lsGet("cp_agent"));
+  const [patron,  setPatron]  = useState(lsGet("ks_patron"));
+  const [agent,   setAgent]   = useState(lsGet("ks_agent"));
+  const [locked,  setLocked]  = useState(!!lsGet("ks_patron")||!!lsGet("ks_agent"));
   const [pinErr,  setPinErr]  = useState("");
   const [pinAttempts,setPinAttempts] = useState(0);
   const [pinBlocked, setPinBlocked]  = useState(false);
@@ -844,8 +844,8 @@ export default function CashPoint() {
   },[dark]);
 
   useEffect(()=>{
-    document.title="CashPoint 💚";
-    const faviconSVG=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 52 52"><defs><linearGradient id="fg" x1="0" y1="0" x2="52" y2="52" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#00C896"/><stop offset="50%" stop-color="#00A5FF"/><stop offset="100%" stop-color="#7B2FBE"/></linearGradient></defs><rect x="2" y="2" width="48" height="48" rx="14" fill="url(#fg)"/><text x="26" y="36" text-anchor="middle" fill="white" font-weight="900" font-size="26" font-family="system-ui">C</text></svg>`;
+    document.title="Kashio 💚";
+    const faviconSVG=`<svg width=\"512\" height=\"512\" viewBox=\"0 0 512 512\" xmlns=\"http://www.w3.org/2000/svg\"><defs><linearGradient id=\"g1\" x1=\"0%\" y1=\"0%\" x2=\"100%\" y2=\"100%\"><stop offset=\"0%\" stop-color=\"#00C896\"/><stop offset=\"100%\" stop-color=\"#00A5FF\"/></linearGradient><linearGradient id=\"gdark\" x1=\"0%\" y1=\"0%\" x2=\"100%\" y2=\"100%\"><stop offset=\"0%\" stop-color=\"#06090F\"/><stop offset=\"100%\" stop-color=\"#0D1828\"/></linearGradient></defs><rect width=\"512\" height=\"512\" rx=\"115\" fill=\"url(#gdark)\"/><ellipse cx=\"256\" cy=\"256\" rx=\"140\" ry=\"140\" fill=\"url(#g1)\" opacity=\"0.06\"/><rect x=\"164\" y=\"130\" width=\"44\" height=\"252\" rx=\"22\" fill=\"url(#g1)\"/><path d=\"M 208 256 Q 284 200 356 138\" fill=\"none\" stroke=\"url(#g1)\" stroke-width=\"44\" stroke-linecap=\"round\"/><path d=\"M 208 256 Q 284 312 356 374\" fill=\"none\" stroke=\"url(#g1)\" stroke-width=\"44\" stroke-linecap=\"round\"/><circle cx=\"208\" cy=\"256\" r=\"26\" fill=\"url(#g1)\" opacity=\"0.6\"/><circle cx=\"208\" cy=\"256\" r=\"14\" fill=\"url(#g1)\"/></svg>`;
     const url="data:image/svg+xml,"+encodeURIComponent(faviconSVG);
     document.querySelectorAll('link[rel*="icon"]').forEach(el=>el.remove());
     const fav=document.createElement("link"); fav.rel="icon"; fav.type="image/svg+xml"; fav.href=url; document.head.appendChild(fav);
@@ -947,13 +947,13 @@ export default function CashPoint() {
     if (pinHash===user.pin) {
       if (isPatron) {
         fetchPatron(patron.telephone).then(f=>{
-          if(f){ const t={...f,pin:patron.pin}; lsSet("cp_patron",t); setPatron(t); }
+          if(f){ const t={...f,pin:patron.pin}; lsSet("ks_patron",t); setPatron(t); }
         });
       }
       if (isAgent) {
         // Recharger depuis Supabase pour avoir patron_id, id UUID etc.
         fetchAgent(agent.telephone).then(f=>{
-          if(f){ const t={...f,pin:agent.pin}; lsSet("cp_agent",t); setAgent(t); }
+          if(f){ const t={...f,pin:agent.pin}; lsSet("ks_agent",t); setAgent(t); }
         });
       }
       setLocked(false); setPinErr(""); setPinAttempts(0);
@@ -968,7 +968,7 @@ export default function CashPoint() {
   }
 
   function handleLogout() {
-    lsDel("cp_patron"); lsDel("cp_agent");
+    lsDel("ks_patron"); lsDel("ks_agent");
     setPatron(null); setAgent(null); setLocked(false); setTab("dashboard"); setConfirmLogout(false);
   }
 
@@ -1099,8 +1099,8 @@ export default function CashPoint() {
 
   // ── GARDES ──────────────────────────────────────────────────────────────────
   if (!patron&&!agent) return <AuthScreen T={T} dark={dark} setDark={setDark}
-    onPatronLogin={p=>{setPatron(p);lsSet("cp_patron",p);setLocked(false);setTab("dashboard");}}
-    onAgentLogin={a=>{setAgent(a);lsSet("cp_agent",a);setLocked(false);setTab("accueil");}} />;
+    onPatronLogin={p=>{setPatron(p);lsSet("ks_patron",p);setLocked(false);setTab("dashboard");}}
+    onAgentLogin={a=>{setAgent(a);lsSet("ks_agent",a);setLocked(false);setTab("accueil");}} />;
   if (locked) return <PinPad title="Bon retour 👋" subtitle={`Content de te revoir, ${(patron||agent).nom.split(" ")[0]} !`} onSubmit={handleUnlock} T={T} error={pinErr} />;
 
   const totalAgentCA  = agentTxs.reduce((s,t)=>s+Number(t.montant),0);
@@ -1129,9 +1129,9 @@ export default function CashPoint() {
       {/* HEADER */}
       <header style={{ background:T.card, padding:"14px 20px", borderBottom:`1px solid ${T.border}`, display:"flex", justifyContent:"space-between", alignItems:"center", position:"sticky", top:0, zIndex:50 }}>
         <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-          <div style={{ width:36, height:36, borderRadius:10, background:"linear-gradient(135deg,#00C896,#00A5FF)", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:900, fontSize:16, color:"#fff" }}>C</div>
+          <svg width="36" height="36" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" style={{flexShrink:0}}><defs><linearGradient id="kg36" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#00C896"/><stop offset="100%" stopColor="#00A5FF"/></linearGradient><linearGradient id="kd36" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#06090F"/><stop offset="100%" stopColor="#0D1828"/></linearGradient></defs><rect width="512" height="512" rx="113" fill="url(#kd36)"/><ellipse cx="256" cy="256" rx="140" ry="140" fill="url(#kg36)" opacity="0.06"/><rect x="164" y="130" width="44" height="252" rx="22" fill="url(#kg36)"/><path d="M 208 256 Q 284 200 356 138" fill="none" stroke="url(#kg36)" strokeWidth="44" strokeLinecap="round"/><path d="M 208 256 Q 284 312 356 374" fill="none" stroke="url(#kg36)" strokeWidth="44" strokeLinecap="round"/><circle cx="208" cy="256" r="26" fill="url(#kg36)" opacity="0.6"/><circle cx="208" cy="256" r="14" fill="url(#kg36)"/></svg>
           <div>
-            <div style={{ fontWeight:900, fontSize:16, color:T.text }}>CashPoint</div>
+            <div style={{ fontWeight:900, fontSize:16, color:T.text }}>Kashio</div>
             <div style={{ fontSize:10, color:T.sub }}>{isPatron?`👑 ${patron.nom_entreprise}`:`👷 ${agent.nom}`}</div>
           </div>
         </div>
@@ -1854,7 +1854,7 @@ export default function CashPoint() {
               <div style={{ display:"flex", justifyContent:"space-between", padding:"6px 0", fontSize:13, borderBottom:"1px solid #eee" }}><span>Départ</span><strong>{fF(capitalCash)}</strong></div>
               <div style={{ display:"flex", justifyContent:"space-between", padding:"6px 0", fontSize:13 }}><span>Maintenant</span><strong style={{color:cashActuel<0?"#89c423":"#00C896"}}>{fF(cashActuel)}</strong></div>
             </div>)}
-            <div style={{ marginTop:12, fontSize:11, color:"#aaa", textAlign:"center", marginBottom:12 }}>Généré par CashPoint · {new Date().toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}</div>
+            <div style={{ marginTop:12, fontSize:11, color:"#aaa", textAlign:"center", marginBottom:12 }}>Généré par Kashio · {new Date().toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}</div>
             <button onClick={()=>{
               const lines=[];
               lines.push(`📊 *POINT DU JOUR — ${dateLabel.toUpperCase()}*`);
@@ -1871,7 +1871,7 @@ export default function CashPoint() {
               });
               lines.push(""); lines.push(`💰 CA: ${fF(totalAgentCA)} | Frais retrait: ${fF(totalAgentCom)}`);
               if (cashActuel!==null) lines.push(`💵 Caisse: ${fF(capitalCash)} → ${fF(cashActuel)}`);
-              lines.push(""); lines.push("_CashPoint_");
+              lines.push(""); lines.push("_Kashio_");
               window.open(`https://wa.me/?text=${encodeURIComponent(lines.join("\n"))}`,"_blank");
             }} style={{ width:"100%", padding:14, borderRadius:14, background:"linear-gradient(135deg,#25D366,#128C7E)", border:"none", color:"#fff", fontWeight:900, fontSize:14, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
               <span style={{fontSize:18}}>📤</span> Partager sur WhatsApp
