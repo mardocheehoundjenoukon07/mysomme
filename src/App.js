@@ -116,7 +116,7 @@ const OP_COLORS = { MTN:"#FFB800", MOOV:"#0066CC", Celtiis:"#E63946" };
 const OP_BG_D   = { MTN:"#FFB80018", MOOV:"#0066CC18", Celtiis:"#E6394618" };
 const OP_BG_L   = { MTN:"#FFB80028", MOOV:"#0066CC20", Celtiis:"#E6394620" };
 const TYPE_COLOR = { depot:"#00C896", retrait:"#4F8EF7", forfait:"#9B5FDE" };
-const TYPE_ICON  = { depot:"⬇️", retrait:"⬆️", forfait:"📦" };
+const TYPE_ICON  = { depot:"⬇️", retrait:"⬆️" };
 const TYPE_LABEL = { depot:"Dépôt", retrait:"Retrait", forfait:"Forfait" };
 const JOURS   = ["Dim","Lun","Mar","Mer","Jeu","Ven","Sam"];
 const MOIS_FR = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
@@ -174,8 +174,15 @@ async function fetchAgent(tel) {
 }
 async function saveAgent(a) {
   try {
-    const r=await fetch(`${SUPA_URL}/rest/v1/cashpoint_agents`,{method:"POST",headers:H(),body:JSON.stringify(a)});
-    return r.ok?(await r.json())[0]:null;
+    // Pour les agents solo, patron_id peut être null
+    // Si null, on utilise un UUID spécial "solo" ou on retire le champ
+    const payload = {...a};
+    if (!payload.patron_id) delete payload.patron_id;
+    const r=await fetch(`${SUPA_URL}/rest/v1/cashpoint_agents`,{method:"POST",headers:H(),body:JSON.stringify(payload)});
+    if (r.ok) return (await r.json())[0];
+    const err = await r.json().catch(()=>({}));
+    console.error("saveAgent error:", err);
+    return null;
   } catch { return null; }
 }
 async function deleteAgent(agentId) {
@@ -447,6 +454,54 @@ function AuthScreen({ T, dark, setDark, onPatronLogin, onAgentLogin }) {
     else setError("Code PIN incorrect.");
   }
 
+  // ── SOLO (sans patron) ───────────────────────────────────────────────────────
+  async function handleSoloRegister() {
+    if (!form.nom.trim())     { setError("Entre ton nom complet"); return; }
+    if (!form.telephone||form.telephone.length!==8) { setError("Entre les 8 chiffres"); return; }
+    const tel="01"+form.telephone;
+    setLoading(true); setError("");
+    const existing=await fetchAgent(tel);
+    if (existing) { setLoading(false); setError("Ce numéro a déjà un compte. Connecte-toi."); return; }
+    const r=await sendOTP(tel); setLoading(false);
+    if (!r.success) { setError(r.error); return; }
+    setStep("solo-otp");
+  }
+  async function handleSoloOTP() {
+    const tel="01"+form.telephone;
+    setLoading(true); setError("");
+    const r=await verifyOTP(tel,form.otpCode||""); setLoading(false);
+    if (!r.success) { setError(r.error); return; }
+    setStep("solo-pin-create");
+  }
+  async function handleSoloPinCreate(p) { setPin1(p); setStep("solo-pin-confirm"); }
+  async function handleSoloPinConfirm(p) {
+    if (p!==pin1) { setError("PIN ne correspondent pas"); setStep("solo-pin-create"); return; }
+    setLoading(true);
+    const pinHash=await hashPin(p);
+    const tel="01"+form.telephone;
+    // Agent solo : patron_id null (géré côté Supabase)
+    const agentData={telephone:tel, nom:form.nom.trim(), patron_id:null, pin:pinHash, phone_verified:true, solo:true};
+    const saved=await saveAgent(agentData);
+    setLoading(false);
+    if (!saved) { setError("Erreur. Réessaie."); return; }
+    lsSet("cp_agent",{...saved,pin:pinHash});
+    onAgentLogin({...saved,pin:pinHash});
+  }
+  async function handleSoloLogin() {
+    if (!form.telephone||form.telephone.length!==8) { setError("Entre les 8 chiffres"); return; }
+    const tel="01"+form.telephone;
+    setLoading(true); setError("");
+    const ag=await fetchAgent(tel); setLoading(false);
+    if (!ag) { setError("Numéro introuvable."); return; }
+    lsSet("cp_agent",ag); setStep("solo-pin-login"); setForm(f=>({...f,_agent:ag}));
+  }
+  async function handleSoloPinLogin(p) {
+    const ag=form._agent||lsGet("cp_agent");
+    const pinHash=await hashPin(p);
+    if (pinHash===ag.pin) onAgentLogin({...ag,pin:pinHash});
+    else setError("Code PIN incorrect.");
+  }
+
   // Écrans PIN
   if (step===3)              return <PinPad title="Crée ton PIN 🔐" subtitle="4 chiffres pour sécuriser ton compte" onSubmit={handlePatronPinCreate} T={T} />;
   if (step===4)              return <PinPad title="Confirme ton PIN" subtitle="Retape les mêmes 4 chiffres" onSubmit={handlePatronPinConfirm} T={T} error={error} />;
@@ -454,10 +509,13 @@ function AuthScreen({ T, dark, setDark, onPatronLogin, onAgentLogin }) {
   if (step==="agent-pin-create")  return <PinPad title="Crée ton PIN 🔐" subtitle="4 chiffres pour sécuriser ton compte" onSubmit={handleAgentPinCreate} T={T} />;
   if (step==="agent-pin-confirm") return <PinPad title="Confirme ton PIN" subtitle="Retape les mêmes 4 chiffres" onSubmit={handleAgentPinConfirm} T={T} error={error} />;
   if (step==="agent-pin-login")   return <PinPad title="Bon retour 👋" subtitle="Entre ton code PIN" onSubmit={handleAgentPinLogin} T={T} error={error} />;
+  if (step==="solo-pin-create")   return <PinPad title="Crée ton PIN 🔐" subtitle="4 chiffres pour sécuriser ton compte" onSubmit={handleSoloPinCreate} T={T} />;
+  if (step==="solo-pin-confirm")  return <PinPad title="Confirme ton PIN" subtitle="Retape les mêmes 4 chiffres" onSubmit={handleSoloPinConfirm} T={T} error={error} />;
+  if (step==="solo-pin-login")    return <PinPad title="Bon retour 👋" subtitle="Entre ton code PIN" onSubmit={handleSoloPinLogin} T={T} error={error} />;
 
   return (
-    <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", minHeight:"100vh", padding:24, background:T.bg }}>
-      <div style={{ width:"100%", maxWidth:400 }}>
+    <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", minHeight:"100vh", padding:"24px 20px", background:T.bg, width:"100%" }}>
+      <div style={{ width:"100%" }}>
         {/* Logo */}
         <div style={{ textAlign:"center", marginBottom:32 }}>
           <div style={{ width:64, height:64, borderRadius:18, background:"linear-gradient(135deg,#00C896,#00A5FF)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:30, fontWeight:900, color:"#fff", margin:"0 auto 14px" }}>C</div>
@@ -468,17 +526,38 @@ function AuthScreen({ T, dark, setDark, onPatronLogin, onAgentLogin }) {
         {/* ── CHOIX INITIAL ── */}
         {mode==="choose" && (<div>
           <div style={{ fontSize:11, color:T.sub, fontWeight:700, letterSpacing:1, textAlign:"center", marginBottom:16 }}>JE SUIS...</div>
+
+          {/* Patron */}
           <button onClick={()=>{setMode("patron");setStep(1);setError("");}}
-            style={{ width:"100%", padding:20, borderRadius:16, background:T.card, border:"2px solid #00C896", color:T.text, fontWeight:800, fontSize:16, cursor:"pointer", marginBottom:12, display:"flex", alignItems:"center", gap:14 }}>
-            <span style={{ fontSize:32 }}>👑</span>
-            <div style={{ textAlign:"left" }}><div style={{ fontWeight:900 }}>Patron / Boss POS</div><div style={{ fontSize:12, color:T.sub, fontWeight:400 }}>Je gère des agents et plusieurs points</div></div>
+            style={{ width:"100%", padding:18, borderRadius:16, background:T.card, border:"1.5px solid #00C896", color:T.text, fontWeight:800, fontSize:15, cursor:"pointer", marginBottom:10, display:"flex", alignItems:"center", gap:14 }}>
+            <div style={{ width:44, height:44, borderRadius:12, background:"#00C89618", display:"flex", alignItems:"center", justifyContent:"center", fontSize:22, flexShrink:0 }}>👑</div>
+            <div style={{ textAlign:"left" }}>
+              <div style={{ fontWeight:900 }}>Patron / Boss POS</div>
+              <div style={{ fontSize:11, color:T.sub, fontWeight:400, marginTop:2 }}>Je gère des agents et plusieurs points POS</div>
+            </div>
           </button>
+
+          {/* Agent avec patron */}
           <button onClick={()=>{setMode("agent");setStep("agent-code");setError("");}}
-            style={{ width:"100%", padding:20, borderRadius:16, background:T.card, border:"2px solid #00A5FF", color:T.text, fontWeight:800, fontSize:16, cursor:"pointer", display:"flex", alignItems:"center", gap:14 }}>
-            <span style={{ fontSize:32 }}>👷</span>
-            <div style={{ textAlign:"left" }}><div style={{ fontWeight:900 }}>Agent / Staff</div><div style={{ fontSize:12, color:T.sub, fontWeight:400 }}>J'ai un code d'invitation de mon patron</div></div>
+            style={{ width:"100%", padding:18, borderRadius:16, background:T.card, border:"1.5px solid #00A5FF", color:T.text, fontWeight:800, fontSize:15, cursor:"pointer", marginBottom:10, display:"flex", alignItems:"center", gap:14 }}>
+            <div style={{ width:44, height:44, borderRadius:12, background:"#00A5FF18", display:"flex", alignItems:"center", justifyContent:"center", fontSize:22, flexShrink:0 }}>👷</div>
+            <div style={{ textAlign:"left" }}>
+              <div style={{ fontWeight:900 }}>Agent / Staff</div>
+              <div style={{ fontSize:11, color:T.sub, fontWeight:400, marginTop:2 }}>J'ai un code d'invitation de mon patron</div>
+            </div>
           </button>
-          <button onClick={()=>setDark(d=>!d)} style={{ width:"100%", marginTop:20, padding:12, borderRadius:12, background:"transparent", border:`1px solid ${T.border}`, color:T.sub, fontSize:13, cursor:"pointer" }}>
+
+          {/* Agent solo — pour moi-même */}
+          <button onClick={()=>{setMode("solo");setStep("solo-register");setError("");}}
+            style={{ width:"100%", padding:18, borderRadius:16, background:T.card, border:"1.5px solid #9B5FDE", color:T.text, fontWeight:800, fontSize:15, cursor:"pointer", marginBottom:20, display:"flex", alignItems:"center", gap:14 }}>
+            <div style={{ width:44, height:44, borderRadius:12, background:"#9B5FDE18", display:"flex", alignItems:"center", justifyContent:"center", fontSize:22, flexShrink:0 }}>🧍</div>
+            <div style={{ textAlign:"left" }}>
+              <div style={{ fontWeight:900 }}>Pour moi-même</div>
+              <div style={{ fontSize:11, color:T.sub, fontWeight:400, marginTop:2 }}>J'utilise CashPoint seul, sans patron</div>
+            </div>
+          </button>
+
+          <button onClick={()=>setDark(d=>!d)} style={{ width:"100%", padding:12, borderRadius:12, background:"transparent", border:`1px solid ${T.border}`, color:T.sub, fontSize:13, cursor:"pointer" }}>
             {dark?"☀️ Mode clair":"🌙 Mode sombre"}
           </button>
         </div>)}
@@ -614,6 +693,70 @@ function AuthScreen({ T, dark, setDark, onPatronLogin, onAgentLogin }) {
             style={{ width:"100%", padding:16, borderRadius:12, background:(form.otpCode||"").length===6?"linear-gradient(135deg,#00C896,#00A5FF)":T.hero, border:"none", color:(form.otpCode||"").length===6?"#fff":T.sub, fontWeight:900, fontSize:15, cursor:"pointer" }}>
             {loading?"⏳...":"✅ Confirmer"}
           </button>
+        </div>)}
+
+        {/* ── SOLO INSCRIPTION ── */}
+        {mode==="solo" && step==="solo-register" && (<div>
+          <div style={{ display:"flex", gap:8, background:T.hero, borderRadius:13, padding:4, marginBottom:24, border:`1px solid ${T.border}` }}>
+            <button style={{ flex:1, padding:"10px 0", borderRadius:10, border:"none", background:"linear-gradient(135deg,#9B5FDE,#7B2FBE)", color:"#fff", fontWeight:800, fontSize:13, cursor:"pointer" }}>Nouveau compte</button>
+            <button onClick={()=>{setMode("solo");setStep("solo-login");}} style={{ flex:1, padding:"10px 0", borderRadius:10, border:"none", background:"transparent", color:T.sub, fontWeight:700, fontSize:13, cursor:"pointer" }}>Se connecter</button>
+          </div>
+          <div style={{ background:"#9B5FDE15", border:"1px solid #9B5FDE30", borderRadius:12, padding:"12px 16px", marginBottom:20, fontSize:12, color:"#9B5FDE", textAlign:"center" }}>
+            🧍 Compte solo — tu gères ton propre point POS
+          </div>
+          <div style={{ marginBottom:12 }}>
+            <div style={{ fontSize:11, color:T.sub, marginBottom:7, fontWeight:700 }}>TON NOM COMPLET</div>
+            <input type="text" placeholder="Ex : Koffi Mensah" value={form.nom} onChange={e=>setForm(f=>({...f,nom:e.target.value}))} style={inp} autoFocus />
+          </div>
+          <div style={{ marginBottom:20 }}>
+            <div style={{ fontSize:11, color:T.sub, marginBottom:7, fontWeight:700 }}>TON NUMÉRO</div>
+            <div style={{ display:"flex", gap:8 }}>
+              <div style={{ ...inp, width:"auto", flexShrink:0, padding:"14px 12px", fontWeight:800, fontSize:13 }}>🇧🇯 01</div>
+              <input type="tel" placeholder="XX XX XX XX" maxLength={8} value={form.telephone} onChange={e=>setForm(f=>({...f,telephone:e.target.value.replace(/\D/g,"").slice(0,8)}))} style={{...inp,flex:1}} />
+            </div>
+          </div>
+          {error && <div style={{ background:"#E6394618", color:"#E63946", borderRadius:10, padding:"10px", fontSize:12, fontWeight:700, marginBottom:14 }}>{error}</div>}
+          <button onClick={handleSoloRegister} disabled={loading} style={{ width:"100%", padding:17, borderRadius:14, background:"linear-gradient(135deg,#9B5FDE,#7B2FBE)", border:"none", color:"#fff", fontWeight:900, fontSize:16, cursor:"pointer", opacity:loading?0.7:1 }}>
+            {loading?"⏳ Envoi SMS...":"Recevoir mon code SMS →"}
+          </button>
+          <button onClick={()=>setMode("choose")} style={{ width:"100%", marginTop:10, padding:12, borderRadius:12, background:"transparent", border:`1px solid ${T.border}`, color:T.sub, fontSize:13, cursor:"pointer" }}>← Retour</button>
+        </div>)}
+
+        {/* ── SOLO OTP ── */}
+        {mode==="solo" && step==="solo-otp" && (<div>
+          <div style={{ textAlign:"center", marginBottom:28 }}>
+            <div style={{ fontSize:40, marginBottom:12 }}>📱</div>
+            <div style={{ fontWeight:900, fontSize:20, color:T.text, marginBottom:6 }}>Vérifie ton numéro</div>
+            <div style={{ fontSize:13, color:T.sub }}>Code envoyé au <strong style={{color:T.text}}>+229 01{form.telephone}</strong></div>
+          </div>
+          <input type="tel" placeholder="_ _ _ _ _ _" maxLength={6} value={form.otpCode||""} onChange={e=>setForm(f=>({...f,otpCode:e.target.value.replace(/\D/g,"").slice(0,6)}))} autoFocus
+            style={{...inp,fontSize:28,fontWeight:800,textAlign:"center",letterSpacing:12,marginBottom:14,border:`2px solid ${(form.otpCode||"").length===6?"#9B5FDE":T.border}`}} />
+          {error && <div style={{ background:"#E6394618", color:"#E63946", borderRadius:10, padding:"10px", fontSize:12, fontWeight:700, marginBottom:14, textAlign:"center" }}>{error}</div>}
+          <button onClick={handleSoloOTP} disabled={loading||(form.otpCode||"").length!==6}
+            style={{ width:"100%", padding:16, borderRadius:12, background:(form.otpCode||"").length===6?"linear-gradient(135deg,#9B5FDE,#7B2FBE)":T.hero, border:"none", color:(form.otpCode||"").length===6?"#fff":T.sub, fontWeight:900, fontSize:15, cursor:"pointer" }}>
+            {loading?"⏳...":"✅ Confirmer"}
+          </button>
+          <button onClick={()=>setStep("solo-register")} style={{ width:"100%", marginTop:10, padding:12, borderRadius:12, background:"transparent", border:`1px solid ${T.border}`, color:T.sub, fontSize:13, cursor:"pointer" }}>← Retour</button>
+        </div>)}
+
+        {/* ── SOLO CONNEXION ── */}
+        {mode==="solo" && step==="solo-login" && (<div>
+          <div style={{ display:"flex", gap:8, background:T.hero, borderRadius:13, padding:4, marginBottom:24, border:`1px solid ${T.border}` }}>
+            <button onClick={()=>setStep("solo-register")} style={{ flex:1, padding:"10px 0", borderRadius:10, border:"none", background:"transparent", color:T.sub, fontWeight:700, fontSize:13, cursor:"pointer" }}>Nouveau compte</button>
+            <button style={{ flex:1, padding:"10px 0", borderRadius:10, border:"none", background:"linear-gradient(135deg,#9B5FDE,#7B2FBE)", color:"#fff", fontWeight:800, fontSize:13, cursor:"pointer" }}>Se connecter</button>
+          </div>
+          <div style={{ marginBottom:20 }}>
+            <div style={{ fontSize:11, color:T.sub, marginBottom:7, fontWeight:700 }}>TON NUMÉRO</div>
+            <div style={{ display:"flex", gap:8 }}>
+              <div style={{ ...inp, width:"auto", flexShrink:0, padding:"14px 12px", fontWeight:800, fontSize:13 }}>🇧🇯 01</div>
+              <input type="tel" placeholder="XX XX XX XX" maxLength={8} value={form.telephone} onChange={e=>setForm(f=>({...f,telephone:e.target.value.replace(/\D/g,"").slice(0,8)}))} style={{...inp,flex:1}} autoFocus />
+            </div>
+          </div>
+          {error && <div style={{ background:"#E6394618", color:"#E63946", borderRadius:10, padding:"10px", fontSize:12, fontWeight:700, marginBottom:14 }}>{error}</div>}
+          <button onClick={handleSoloLogin} disabled={loading} style={{ width:"100%", padding:17, borderRadius:14, background:"linear-gradient(135deg,#9B5FDE,#7B2FBE)", border:"none", color:"#fff", fontWeight:900, fontSize:16, cursor:"pointer" }}>
+            {loading?"⏳...":"Continuer →"}
+          </button>
+          <button onClick={()=>setMode("choose")} style={{ width:"100%", marginTop:10, padding:12, borderRadius:12, background:"transparent", border:`1px solid ${T.border}`, color:T.sub, fontSize:13, cursor:"pointer" }}>← Retour</button>
         </div>)}
 
         {/* ── AGENT CONNEXION ── */}
@@ -960,7 +1103,7 @@ export default function CashPoint() {
   const totalAgentCom = agentTxs.filter(t=>t.type==="retrait").reduce((s,t)=>s+Number(t.commission),0);
 
   const NAV_PATRON = [["dashboard","📊","Dashboard"],["agents","👷","Agents"],["profil","👤","Profil"]];
-  const NAV_AGENT  = [["accueil","🏠","Accueil"],["stats","📊","Stats"],["historique","🗂️","Historique"],["profil","👤","Profil"]];
+  const NAV_AGENT  = [["accueil","🏠","Accueil"],["stats","📊","Stats"],["historique","📋","Historique"],["profil","👤","Profil"]];
 
   const modalWrap = { position:"fixed", inset:0, background:"#000C", display:"flex", alignItems:"flex-end", zIndex:200 };
   const modalBox  = { width:"100%", background:T.card, borderRadius:"22px 22px 0 0", padding:"16px 18px 48px", maxHeight:"90vh", overflowY:"auto" };
@@ -985,7 +1128,7 @@ export default function CashPoint() {
           <div style={{ width:36, height:36, borderRadius:10, background:"linear-gradient(135deg,#00C896,#00A5FF)", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:900, fontSize:16, color:"#fff" }}>C</div>
           <div>
             <div style={{ fontWeight:900, fontSize:16, color:T.text }}>CashPoint</div>
-            <div style={{ fontSize:10, color:T.sub }}>{isPatron?`👑 ${patron.nom_entreprise}`:`👷 ${agent.nom}`}</div>
+            <div style={{ fontSize:10, color:T.sub }}>{isPatron?`👑 ${patron.nom_entreprise}`:agent.solo?`🧍 ${agent.nom}`:`👷 ${agent.nom}`}</div>
           </div>
         </div>
         <div style={{ display:"flex", gap:8, alignItems:"center" }}>
@@ -1006,7 +1149,7 @@ export default function CashPoint() {
       {/* ═══════════════════════════════════════════════════════════════════════
           CONTENU PRINCIPAL
       ════════════════════════════════════════════════════════════════════════ */}
-      <main style={{ padding:"16px 16px 120px", maxWidth:520, margin:"0 auto" }}>
+      <main style={{ padding:"16px 16px 120px", width:"100%", boxSizing:"border-box" }}>
 
         {/* ══════════════ DASHBOARD PATRON ══════════════════════════════ */}
         {isPatron && tab==="dashboard" && !selectedAgent && (<div>
@@ -1067,163 +1210,72 @@ export default function CashPoint() {
             const s=getAgentStats(ag.id);
             const actif=s.nbOps>0;
             const cashColor=s.cashActuel===null?T.sub:s.cashActuel<0?"#E63946":s.cashActuel/(s.cashDepart||1)<0.2?"#FFB800":"#00C896";
-            return (<div key={ag.id} onClick={()=>setSelectedAgent(ag)} style={{ background:T.card, borderRadius:16, padding:16, marginBottom:12, border:`1px solid ${T.border}`, borderLeft:`3px solid ${actif?"#00C896":"#4A5060"}`, cursor:"pointer" }}>
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
-                <div>
-                  <div style={{ fontWeight:800, fontSize:15 }}>👷 {ag.nom}</div>
-                  <div style={{ fontSize:11, color:T.sub, marginTop:2 }}>{actif?`🕐 Dernière op : ${s.lastOp}`:"Aucune opération aujourd'hui"}</div>
+            const mtnColor=s.mtnActuel===null?T.sub:s.mtnActuel<0?"#E63946":s.mtnActuel<5000?"#FFB800":"#00C896";
+            const moovColor=s.moovActuel===null?T.sub:s.moovActuel<0?"#E63946":s.moovActuel<5000?"#FFB800":"#00C896";
+            const celtColor=s.celtiisActuel===null?T.sub:s.celtiisActuel<0?"#E63946":s.celtiisActuel<5000?"#FFB800":"#00C896";
+            return (<div key={ag.id} onClick={()=>setSelectedAgent(ag)}
+              style={{ background:T.card, borderRadius:16, padding:16, marginBottom:12,
+                border:`1px solid ${T.border}`,
+                borderLeft:`1px solid ${actif?"#00C896":"#4A506040"}`,
+                cursor:"pointer", transition:"border-color 0.2s" }}>
+
+              {/* Header agent */}
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
+                <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                  <div style={{ width:36, height:36, borderRadius:10, background:actif?"#00C89618":"#4A506018", display:"flex", alignItems:"center", justifyContent:"center", fontSize:18 }}>
+                    {actif?"🟢":"⚫"}
+                  </div>
+                  <div>
+                    <div style={{ fontWeight:800, fontSize:15 }}>{ag.nom}</div>
+                    <div style={{ fontSize:10, color:T.sub, marginTop:1 }}>
+                      {actif?`Dernière op · ${s.lastOp}`:"Aucune activité aujourd'hui"}
+                    </div>
+                  </div>
                 </div>
                 <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                  <div style={{ background:actif?"#00C89618":"#4A506020", borderRadius:8, padding:"4px 10px", fontSize:11, fontWeight:700, color:actif?"#00C896":T.sub }}>{actif?"🟢 Actif":"⚫ Inactif"}</div>
+                  <div style={{ textAlign:"right" }}>
+                    <div style={{ fontSize:10, color:T.sub }}>FRAIS</div>
+                    <div style={{ fontSize:15, fontWeight:900, color:"#FFB800" }}>{fF(s.fraisRetrait)}</div>
+                  </div>
                   <span style={{ color:T.sub, fontSize:16 }}>›</span>
                 </div>
               </div>
+
+              {/* Ligne 1 : Cash + Opérations */}
               <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:8 }}>
                 <div style={{ background:T.hero, borderRadius:10, padding:"10px 12px" }}>
-                  <div style={{ fontSize:10, color:T.sub, marginBottom:3 }}>CA DU JOUR</div>
-                  <div style={{ fontSize:15, fontWeight:900, color:"#00C896" }}>{fF(s.depots+s.retraits)}</div>
+                  <div style={{ fontSize:9, color:T.sub, marginBottom:2, fontWeight:700, letterSpacing:0.5 }}>💵 CASH ACTUEL</div>
+                  <div style={{ fontSize:15, fontWeight:900, color:cashColor }}>
+                    {s.cashActuel!==null?fF(s.cashActuel):"—"}
+                  </div>
+                  {s.cashDepart!==null&&<div style={{ fontSize:9, color:T.sub, marginTop:1 }}>Départ : {fF(s.cashDepart)}</div>}
+                  {s.cashActuel!==null&&s.cashActuel<0&&<div style={{ fontSize:9, color:"#E63946", fontWeight:700, marginTop:2 }}>🚨 Insuffisant</div>}
                 </div>
                 <div style={{ background:T.hero, borderRadius:10, padding:"10px 12px" }}>
-                  <div style={{ fontSize:10, color:T.sub, marginBottom:3 }}>FRAIS DE RETRAIT</div>
-                  <div style={{ fontSize:15, fontWeight:900, color:"#FFB800" }}>{fF(s.fraisRetrait)}</div>
+                  <div style={{ fontSize:9, color:T.sub, marginBottom:2, fontWeight:700, letterSpacing:0.5 }}>📊 OPÉRATIONS</div>
+                  <div style={{ fontSize:15, fontWeight:900, color:"#00C896" }}>{s.nbOps}</div>
+                  <div style={{ fontSize:9, color:T.sub, marginTop:1 }}>
+                    ⬇️{allTxs.filter(t=>t.agent_id===ag.id&&t.type==="depot").length} · ⬆️{allTxs.filter(t=>t.agent_id===ag.id&&t.type==="retrait").length}
+                  </div>
                 </div>
               </div>
-              {s.cashActuel!==null && (<div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
-                <div style={{ background:T.hero, borderRadius:10, padding:"10px 12px" }}>
-                  <div style={{ fontSize:10, color:T.sub, marginBottom:3 }}>💵 CASH EN SAC</div>
-                  <div style={{ fontSize:15, fontWeight:900, color:cashColor }}>{fF(s.cashActuel)}</div>
-                </div>
-                <div style={{ background:"#00C89610", borderRadius:10, padding:"10px 12px", border:"1px solid #00C89625" }}>
-                  <div style={{ fontSize:10, color:T.sub, marginBottom:3 }}>📊 POINT TOTAL</div>
-                  <div style={{ fontSize:15, fontWeight:900, color:"#00C896" }}>{fF(s.pointTotal)}</div>
-                </div>
-              </div>)}
-            </div>);
-          })}
 
-          {/* ══ FIL DES TRANSACTIONS EN DIRECT ══════════════════════════ */}
-          {allTxs.length > 0 && (
-            <div style={{ background:T.card, borderRadius:16, padding:18, marginTop:8, border:`1px solid ${T.border}` }}>
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
-                <div>
-                  <div style={{ fontWeight:800, fontSize:14 }}>📋 Opérations en direct</div>
-                  <div style={{ fontSize:11, color:T.sub, marginTop:2 }}>{allTxs.length} opération{allTxs.length>1?"s":""} aujourd'hui</div>
-                </div>
-                <div style={{ background:"#00C89618", borderRadius:8, padding:"4px 10px", fontSize:10, fontWeight:800, color:"#00C896" }}>🔴 LIVE</div>
-              </div>
-
-              {/* Totaux rapides */}
-              <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:8, marginBottom:16 }}>
-                {[
-                  ["⬇️ Dépôts", allTxs.filter(t=>t.type==="depot").length, allTxs.filter(t=>t.type==="depot").reduce((s,t)=>s+Number(t.montant),0), "#00C896"],
-                  ["⬆️ Retraits", allTxs.filter(t=>t.type==="retrait").length, allTxs.filter(t=>t.type==="retrait").reduce((s,t)=>s+Number(t.montant),0), "#4F8EF7"],
-                  ["💰 Frais", allTxs.filter(t=>t.type==="retrait").length, allTxs.filter(t=>t.type==="retrait").reduce((s,t)=>s+Number(t.commission),0), "#FFB800"],
-                ].map(([lbl,nb,total,col])=>(
-                  <div key={lbl} style={{ background:T.hero, borderRadius:10, padding:"10px 8px", textAlign:"center" }}>
-                    <div style={{ fontSize:10, color:T.sub, marginBottom:4 }}>{lbl}</div>
-                    <div style={{ fontSize:14, fontWeight:900, color:col }}>{fF(total)}</div>
-                    <div style={{ fontSize:10, color:T.faint }}>{nb} op</div>
+              {/* Ligne 2 : Floats MTN / MOOV / Celtiis */}
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:6 }}>
+                {[["MTN",s.mtnActuel,mtnColor,"#FFB800"],["MOOV",s.moovActuel,moovColor,"#0066CC"],["Celtiis",s.celtiisActuel,celtColor,"#E63946"]].map(([op,val,col,opCol])=>(
+                  <div key={op} style={{ background:T.hero, borderRadius:9, padding:"8px 6px", textAlign:"center" }}>
+                    <div style={{ fontSize:9, color:opCol, fontWeight:700, marginBottom:2 }}>{op}</div>
+                    <div style={{ fontSize:12, fontWeight:900, color:val===null?T.faint:val<0?"#E63946":col }}>
+                      {val===null?"—":val<0?`-${fF(Math.abs(val))}`:fF(val)}
+                    </div>
+                    {val!==null&&val<5000&&val>=0&&<div style={{ fontSize:8, color:"#FFB800", marginTop:1 }}>⚠️ Bas</div>}
+                    {val!==null&&val<0&&<div style={{ fontSize:8, color:"#E63946", marginTop:1 }}>🚨</div>}
                   </div>
                 ))}
               </div>
 
-              {/* Liste des transactions */}
-              {allTxs.map((t,i) => {
-                const agNom = agents.find(a=>a.id===t.agent_id)?.nom || "Agent";
-                return (
-                  <div key={t.id||i} style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 0", borderBottom: i<allTxs.length-1?`1px solid ${T.border}`:"none" }}>
-                    {/* Icône type */}
-                    <div style={{ width:36, height:36, borderRadius:10, background:`${TYPE_COLOR[t.type]||"#00C896"}18`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16, flexShrink:0 }}>
-                      {TYPE_ICON[t.type]||"💳"}
-                    </div>
-                    {/* Info */}
-                    <div style={{ flex:1, minWidth:0 }}>
-                      <div style={{ fontSize:13, fontWeight:700 }}>
-                        {TYPE_LABEL[t.type]} <span style={{ color:OP_COLORS[t.operateur] }}>{t.operateur}</span>
-                      </div>
-                      <div style={{ fontSize:11, color:T.sub }}>
-                        👷 {agNom} · {t.heure||""}
-                      </div>
-                    </div>
-                    {/* Montant + frais */}
-                    <div style={{ textAlign:"right", flexShrink:0 }}>
-                      <div style={{ fontWeight:900, color:TYPE_COLOR[t.type]||"#00C896", fontSize:14 }}>{fF(t.montant)}</div>
-                      {t.commission>0 && <div style={{ fontSize:11, color:"#FFB800", fontWeight:700 }}>frais {fF(t.commission)}</div>}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-        </div>)}
-
-        {/* ══════════════ DETAIL AGENT (PATRON) ═════════════════════════ */}
-        {isPatron && tab==="dashboard" && selectedAgent && (()=>{
-          const ag=selectedAgent; const s=getAgentStats(ag.id);
-          const cashColor=s.cashActuel===null?T.sub:s.cashActuel<0?"#E63946":s.cashActuel/(s.cashDepart||1)<0.2?"#FFB800":"#00C896";
-          return (<div>
-            <button onClick={()=>setSelectedAgent(null)} style={{ background:T.card, border:`1px solid ${T.border}`, borderRadius:10, padding:"8px 16px", color:T.text, fontSize:13, fontWeight:700, cursor:"pointer", marginBottom:20 }}>← Retour</button>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
-              <div><div style={{ fontWeight:900, fontSize:20 }}>👷 {ag.nom}</div><div style={{ fontSize:12, color:T.sub }}>+229 {ag.telephone}</div></div>
-              <div style={{ background:s.nbOps>0?"#00C89618":"#4A506020", borderRadius:10, padding:"6px 14px", fontSize:12, fontWeight:800, color:s.nbOps>0?"#00C896":T.sub }}>{s.nbOps>0?"🟢 Actif":"⚫ Inactif"}</div>
-            </div>
-            {/* Cash en sac */}
-            <div style={{ background:T.card, borderRadius:16, padding:18, marginBottom:12, border:"1px solid #00C89630" }}>
-              <div style={{ fontSize:11, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:12 }}>💵 ARGENT LIQUIDE (SAC)</div>
-              {s.cashDepart===null?<div style={{ color:T.faint, fontSize:13 }}>Cash de départ non renseigné</div>:(<>
-                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-end", marginBottom:8 }}>
-                  <div><div style={{ fontSize:11, color:T.sub }}>Départ</div><div style={{ fontSize:14, fontWeight:700, color:T.sub }}>{fF(s.cashDepart)}</div></div>
-                  <div style={{ textAlign:"right" }}><div style={{ fontSize:11, color:T.sub }}>Disponible</div><div style={{ fontSize:26, fontWeight:900, color:cashColor }}>{fF(s.cashActuel)}</div></div>
-                </div>
-                <div style={{ height:6, background:T.faint, borderRadius:3, overflow:"hidden", marginBottom:8 }}>
-                  <div style={{ height:"100%", width:`${Math.max(0,Math.min(100,s.cashActuel/(s.cashDepart||1)*100))}%`, background:cashColor, borderRadius:3 }} />
-                </div>
-                <div style={{ display:"flex", gap:8 }}>
-                  <div style={{ flex:1, background:"#00C89610", border:"1px solid #00C89625", borderRadius:8, padding:"6px 10px", fontSize:11 }}><span style={{ color:T.sub }}>⬇️ </span><span style={{ color:"#00C896", fontWeight:800 }}>+{fF(s.depots)}</span></div>
-                  <div style={{ flex:1, background:"#E6394610", border:"1px solid #E6394625", borderRadius:8, padding:"6px 10px", fontSize:11 }}><span style={{ color:T.sub }}>⬆️ </span><span style={{ color:"#E63946", fontWeight:800 }}>-{fF(s.retraits)}</span></div>
-                </div>
-              </>)}
-            </div>
-            {/* Comptes MoMo */}
-            <div style={{ background:T.card, borderRadius:16, padding:18, marginBottom:12, border:"1px solid #7B2FBE30" }}>
-              <div style={{ fontSize:11, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:14 }}>📱 COMPTES MOMO</div>
-              {[{op:"MTN",a:s.mtnActuel,d:s.fl?Number(s.fl.float_mtn||0):null},{op:"MOOV",a:s.moovActuel,d:s.fl?Number(s.fl.float_moov||0):null},{op:"Celtiis",a:s.celtiisActuel,d:s.fl?Number(s.fl.float_celtiis||0):null}].map(({op,a,d},i)=>(
-                <div key={op} style={{ marginBottom:i<2?14:0, paddingBottom:i<2?14:0, borderBottom:i<2?`1px solid ${T.border}`:"none" }}>
-                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
-                    <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                      <div style={{ width:30, height:30, borderRadius:8, background:`${OP_COLORS[op]}18`, border:`1px solid ${OP_COLORS[op]}40`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:8, fontWeight:900, color:OP_COLORS[op] }}>{op}</div>
-                      <div style={{ fontSize:13, fontWeight:700 }}>{op}</div>
-                    </div>
-                    {a!==null?<div style={{ fontSize:16, fontWeight:900, color:a<0?"#E63946":d>0&&a/d<0.15?"#FFB800":"#00C896" }}>{fF(a)}</div>:<div style={{ fontSize:12, color:T.faint }}>Non renseigné</div>}
-                  </div>
-                  {d!==null&&d>0&&<div style={{ height:4, background:T.faint, borderRadius:2, overflow:"hidden" }}><div style={{ height:"100%", width:`${Math.max(0,Math.min(100,a/d*100))}%`, background:OP_COLORS[op], borderRadius:2 }} /></div>}
-                </div>
-              ))}
-            </div>
-            {/* Point total */}
-            <div style={{ background:"linear-gradient(135deg,#00C89615,#00A5FF10)", borderRadius:16, padding:18, marginBottom:12, border:"1px solid #00C89635" }}>
-              <div style={{ fontSize:11, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:8 }}>📊 POINT TOTAL DU JOUR</div>
-              {[["Argent liquide",fF(s.cashActuel!==null?s.cashActuel:0),cashColor],["Total MoMo",fF(s.momoActuel),"#9B5FDE"]].map(([lbl,val,col])=>(
-                <div key={lbl} style={{ display:"flex", justifyContent:"space-between", marginBottom:10 }}><div style={{ fontSize:13, color:T.sub }}>{lbl}</div><div style={{ fontSize:15, fontWeight:800, color:col }}>{val}</div></div>
-              ))}
-              <div style={{ height:1, background:T.border, margin:"10px 0" }} />
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                <div style={{ fontSize:14, fontWeight:800 }}>TOTAL GÉNÉRAL</div>
-                <div style={{ fontSize:24, fontWeight:900, color:"#00C896" }}>{s.pointTotal!==null?fF(s.pointTotal):"—"}</div>
-              </div>
-            </div>
-            {/* Bilan journée */}
-            <div style={{ background:T.card, borderRadius:16, padding:18, border:`1px solid ${T.border}` }}>
-              <div style={{ fontSize:11, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:14 }}>📋 BILAN DE JOURNÉE</div>
-              {[["CA total",fF(s.depots+s.retraits),"#00C896"],["Dépôts",`${allTxs.filter(t=>t.agent_id===ag.id&&t.type==="depot").length} op · ${fF(s.depots)}`,"#00C896"],["Retraits",`${allTxs.filter(t=>t.agent_id===ag.id&&t.type==="retrait").length} op · ${fF(s.retraits)}`,"#4F8EF7"],["Frais de retrait",fF(s.fraisRetrait),"#FFB800"]].map(([l,v,c])=>(
-                <div key={l} style={{ display:"flex", justifyContent:"space-between", padding:"8px 0", borderBottom:`1px solid ${T.border}` }}>
-                  <div style={{ fontSize:13, color:T.sub }}>{l}</div><div style={{ fontSize:14, fontWeight:800, color:c }}>{v}</div>
-                </div>
-              ))}
-            </div>
-          </div>);
-        })()}
+            </div>);
+          })}
 
         {/* ══════════════ GESTION AGENTS (PATRON) ═══════════════════════ */}
         {isPatron && tab==="agents" && (<div>
@@ -1338,66 +1390,8 @@ export default function CashPoint() {
             })}
           </div>
 
-          {/* Vente d'unités (forfaits) */}
-          {isToday && (<div style={{ background:T.card, borderRadius:16, padding:18, marginBottom:14, border:"1px solid #9B5FDE30" }}>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
-              <div><div style={{ fontWeight:800, fontSize:14 }}>📦 Vente d'unités</div><div style={{ fontSize:11, color:T.sub }}>3 taps pour enregistrer</div></div>
-              <div style={{ fontSize:11, color:"#9B5FDE", fontWeight:700 }}>{agentTxs.filter(t=>t.type==="forfait").length} vendu(s)</div>
-            </div>
-            <div style={{ marginBottom:10 }}>
-              <div style={{ fontSize:10, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:8 }}>1 — TYPE</div>
-              <div style={{ display:"flex", gap:8 }}>
-                {[["internet","🌐","Internet"],["appel","📞","Appel"],["simple","📱","Simple"]].map(([k,ico,lbl])=>(
-                  <button key={k} onClick={()=>setForm(f=>({...f,forfaitType:f.forfaitType===k?null:k,forfaitPrix:null}))}
-                    style={{ flex:1, padding:"10px 4px", borderRadius:11, border:`2px solid ${form.forfaitType===k?"#9B5FDE":T.border}`, background:form.forfaitType===k?"#9B5FDE18":"transparent", color:form.forfaitType===k?"#9B5FDE":T.sub, fontWeight:800, fontSize:12, cursor:"pointer", textAlign:"center" }}>
-                    <div style={{ fontSize:16 }}>{ico}</div><div style={{ marginTop:2 }}>{lbl}</div>
-                  </button>
-                ))}
-              </div>
-            </div>
-            {form.forfaitType && (<div style={{ marginBottom:10 }}>
-              <div style={{ fontSize:10, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:8 }}>2 — RÉSEAU</div>
-              <div style={{ display:"flex", gap:8 }}>
-                {OPS.map(op=>(
-                  <button key={op} onClick={()=>setForm(f=>({...f,forfaitOp:f.forfaitOp===op?null:op,forfaitPrix:null}))}
-                    style={{ flex:1, padding:"10px 0", borderRadius:11, border:`2px solid ${form.forfaitOp===op?OP_COLORS[op]:T.border}`, background:form.forfaitOp===op?OP_BG[op]:"transparent", color:form.forfaitOp===op?OP_COLORS[op]:T.sub, fontWeight:800, fontSize:13, cursor:"pointer" }}>
-                    {op}
-                  </button>
-                ))}
-              </div>
-            </div>)}
-            {form.forfaitType&&form.forfaitOp&&(()=>{
-              const G={MTN:{internet:[100,300,500,1000,2000,3500,6000,15100,25000,50000,100000],appel:[100,150,200,300,500,1000,2500,5000],simple:[100,200,500,1000,2000,5000]},MOOV:{internet:[200,500,1000,2000,4500,8000,15000,20000,50000],appel:[100,200,500,1000,2500,5000],simple:[100,200,500,1000,5000]},Celtiis:{internet:[1000,3000,5000,10000,20000],appel:[100,200,500,1500,3000,5000,10000],simple:[200,500,1000,2000,5000]}};
-              const prix=G[form.forfaitOp]?.[form.forfaitType]||[];
-              return (<div style={{ marginBottom:10 }}>
-                <div style={{ fontSize:10, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:8 }}>3 — MONTANT</div>
-                <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
-                  {prix.map(p=>(<button key={p} onClick={()=>setForm(f=>({...f,forfaitPrix:p}))}
-                    style={{ padding:"7px 12px", borderRadius:9, border:`2px solid ${form.forfaitPrix===p?OP_COLORS[form.forfaitOp]:T.border}`, background:form.forfaitPrix===p?OP_BG[form.forfaitOp]:"transparent", color:form.forfaitPrix===p?OP_COLORS[form.forfaitOp]:T.sub, fontWeight:700, fontSize:12, cursor:"pointer" }}>
-                    {p>=1000?`${p/1000}k`:p} F
-                  </button>))}
-                </div>
-              </div>);
-            })()}
-            {form.forfaitType&&form.forfaitOp&&form.forfaitPrix&&(<button onClick={async()=>{
-              setSaving(true);
-              const uid=agent.id||agent.telephone; const localId=Date.now();
-              const lbls={internet:"🌐 Internet",appel:"📞 Appel",simple:"📱 Simple"};
-              const tx={agent_id:agent.id,patron_id:agent.patron_id,type:"forfait",operateur:form.forfaitOp,montant:Number(form.forfaitPrix),commission:0,client:lbls[form.forfaitType]||"Forfait",telephone:null,heure:new Date().toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}),created_at:nowISO(),localId};
-              const opt={...tx,id:localId}; setAgentTxs(p=>[opt,...p]);
-              const result=await saveTx(tx);
-              if(result.ok){setAgentTxs(p=>p.map(t=>t.id===localId?result.data:t));}
-              else{console.error("❌ Forfait Supabase:",result.error);const pend=lsGet(pendKey(uid))||[];lsSet(pendKey(uid),[...pend,tx]);setPendingCount(c=>c+1);}
-              lsSet(txKey(selectedDate,uid),[(result.ok?result.data:opt),...(lsGet(txKey(selectedDate,uid))||[])]);
-              setSaving(false); setForm({});
-              if(result.ok){setFlash("forfait"); setTimeout(()=>setFlash(null),2200);}
-              setTimeout(()=>loadAgentTxs(selectedDate),1200);
-            }} disabled={saving} style={{ width:"100%", padding:14, borderRadius:12, background:saving?"#1A1D2E":"linear-gradient(135deg,#9B5FDE,#7B2FBE)", border:"none", color:saving?T.sub:"#fff", fontWeight:900, fontSize:14, cursor:saving?"not-allowed":"pointer" }}>
-              {saving?"⏳ Sauvegarde…":`✅ ${form.forfaitOp} ${form.forfaitType} ${fF(form.forfaitPrix)}`}
-            </button>)}
-          </div>)}
 
-          {/* Bouton rapport */}
+                    {/* Bouton rapport */}
           <button onClick={()=>setShowReport(true)} style={{ width:"100%", padding:14, borderRadius:14, background:"linear-gradient(135deg,#25D366,#128C7E)", border:"none", color:"#fff", fontWeight:800, fontSize:14, cursor:"pointer", marginBottom:14, display:"flex", alignItems:"center", justifyContent:"center", gap:10 }}>
             <span style={{ fontSize:18 }}>📤</span> Envoyer le point du jour
           </button>
@@ -1489,6 +1483,22 @@ export default function CashPoint() {
                   <span style={{ fontSize:13, color:T.sub }}>{l}</span><span style={{ fontSize:13, fontWeight:700 }}>{v}</span>
                 </div>
               ))}
+              <div style={{ marginTop:16, background:"#00C89610", border:"1px solid #00C89630", borderRadius:12, padding:"14px 16px" }}>
+                <div style={{ fontSize:11, color:T.sub, fontWeight:700, marginBottom:8, letterSpacing:1 }}>💳 MON ABONNEMENT</div>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
+                  <span style={{ fontSize:13, color:T.sub }}>Agents actifs</span>
+                  <span style={{ fontSize:15, fontWeight:900, color:"#00C896" }}>{agents.length}</span>
+                </div>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
+                  <span style={{ fontSize:13, color:T.sub }}>Prix par agent/mois</span>
+                  <span style={{ fontSize:13, fontWeight:700 }}>1 999 F CFA</span>
+                </div>
+                <div style={{ height:"1px", background:T.border, margin:"8px 0" }} />
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                  <span style={{ fontSize:13, fontWeight:700 }}>Total mensuel</span>
+                  <span style={{ fontSize:18, fontWeight:900, color:"#00C896" }}>{fF(agents.length*1999)}</span>
+                </div>
+              </div>
             </>)}
             {isAgent&&(<>
               <div style={{ fontSize:11, color:T.sub, marginBottom:12, fontWeight:700 }}>COMPTE AGENT</div>
@@ -1519,7 +1529,7 @@ export default function CashPoint() {
 
       {/* ══ BOTTOM NAV ══════════════════════════════════════════════════ */}
       <nav style={{ position:"fixed", bottom:0, left:0, right:0, background:T.nav, borderTop:`1px solid ${T.border}`, zIndex:50 }}>
-        <div style={{ display:"flex", justifyContent:"space-around", padding:"8px 0 12px", maxWidth:520, margin:"0 auto" }}>
+        <div style={{ display:"flex", justifyContent:"space-around", padding:"8px 0 12px", width:"100%" }}>
           {(isPatron?NAV_PATRON:NAV_AGENT).map(([key,icon,label])=>(
             <button key={key} onClick={()=>{ setTab(key); if(key==="dashboard") setSelectedAgent(null); }} style={{ background:"none", border:"none", color:tab===key?"#00C896":T.faint, fontSize:10, fontWeight:tab===key?800:500, cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", gap:3, padding:"0 16px" }}>
               <span style={{ fontSize:22 }}>{icon}</span>{label}
