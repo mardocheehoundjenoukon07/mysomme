@@ -115,9 +115,9 @@ const OPS       = ["MTN","MOOV","Celtiis"];
 const OP_COLORS = { MTN:"#FFB800", MOOV:"#0066CC", Celtiis:"#E63946" };
 const OP_BG_D   = { MTN:"#FFB80018", MOOV:"#0066CC18", Celtiis:"#E6394618" };
 const OP_BG_L   = { MTN:"#FFB80028", MOOV:"#0066CC20", Celtiis:"#E6394620" };
-const TYPE_COLOR = { depot:"#00C896", retrait:"#4F8EF7", forfait:"#9B5FDE" };
-const TYPE_ICON  = { depot:"⬇️", retrait:"⬆️", forfait:"📦" };
-const TYPE_LABEL = { depot:"Dépôt", retrait:"Retrait", forfait:"Forfait" };
+const TYPE_COLOR = { depot:"#00C896", retrait:"#4F8EF7" };
+const TYPE_ICON  = { depot:"↙", retrait:"↗" };
+const TYPE_LABEL = { depot:"Dépôt", retrait:"Retrait" };
 const JOURS   = ["Dim","Lun","Mar","Mer","Jeu","Ven","Sam"];
 const MOIS_FR = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
 const PAYS    = ["Bénin","Togo","Burkina Faso","Côte d'Ivoire","Sénégal"];
@@ -488,18 +488,42 @@ function AuthScreen({ T, dark, setDark, onPatronLogin, onAgentLogin }) {
 
         {/* ── CHOIX INITIAL ── */}
         {mode==="choose" && (<div>
-          <div style={{ fontSize:11, color:T.sub, fontWeight:700, letterSpacing:1, textAlign:"center", marginBottom:16 }}>JE SUIS...</div>
+          <div style={{ fontSize:11, color:T.sub, fontWeight:700, letterSpacing:1, textAlign:"center", marginBottom:20 }}>CHOISIR MON PROFIL</div>
+
+          {/* Patron */}
           <button onClick={()=>{setMode("patron");setStep(1);setError("");}}
-            style={{ width:"100%", padding:20, borderRadius:16, background:T.card, border:"2px solid #00C896", color:T.text, fontWeight:800, fontSize:16, cursor:"pointer", marginBottom:12, display:"flex", alignItems:"center", gap:14 }}>
-            <span style={{ fontSize:32 }}>👑</span>
-            <div style={{ textAlign:"left" }}><div style={{ fontWeight:900 }}>Patron / Boss POS</div><div style={{ fontSize:12, color:T.sub, fontWeight:400 }}>Je gère des agents et plusieurs points</div></div>
+            style={{ width:"100%", padding:18, borderRadius:14, background:T.card, border:`1px solid #00C89650`, color:T.text, fontWeight:700, cursor:"pointer", marginBottom:10, display:"flex", alignItems:"center", gap:14 }}>
+            <div style={{ width:44, height:44, borderRadius:12, background:"linear-gradient(135deg,#00C896,#009E78)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>👑</div>
+            <div style={{ textAlign:"left" }}>
+              <div style={{ fontWeight:800, fontSize:15 }}>Patron / Boss POS</div>
+              <div style={{ fontSize:12, color:T.sub, marginTop:2 }}>Je gère une équipe d'agents</div>
+            </div>
+            <span style={{ marginLeft:"auto", color:T.faint, fontSize:18 }}>›</span>
           </button>
+
+          {/* Agent avec code */}
           <button onClick={()=>{setMode("agent");setStep("agent-code");setError("");}}
-            style={{ width:"100%", padding:20, borderRadius:16, background:T.card, border:"2px solid #00A5FF", color:T.text, fontWeight:800, fontSize:16, cursor:"pointer", display:"flex", alignItems:"center", gap:14 }}>
-            <span style={{ fontSize:32 }}>👷</span>
-            <div style={{ textAlign:"left" }}><div style={{ fontWeight:900 }}>Agent / Staff</div><div style={{ fontSize:12, color:T.sub, fontWeight:400 }}>J'ai un code d'invitation de mon patron</div></div>
+            style={{ width:"100%", padding:18, borderRadius:14, background:T.card, border:`1px solid #4F8EF750`, color:T.text, fontWeight:700, cursor:"pointer", marginBottom:10, display:"flex", alignItems:"center", gap:14 }}>
+            <div style={{ width:44, height:44, borderRadius:12, background:"linear-gradient(135deg,#4F8EF7,#3B6FD4)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>👷</div>
+            <div style={{ textAlign:"left" }}>
+              <div style={{ fontWeight:800, fontSize:15 }}>Agent / Staff</div>
+              <div style={{ fontSize:12, color:T.sub, marginTop:2 }}>J'ai un code d'invitation de mon patron</div>
+            </div>
+            <span style={{ marginLeft:"auto", color:T.faint, fontSize:18 }}>›</span>
           </button>
-          <button onClick={()=>setDark(d=>!d)} style={{ width:"100%", marginTop:20, padding:12, borderRadius:12, background:"transparent", border:`1px solid ${T.border}`, color:T.sub, fontSize:13, cursor:"pointer" }}>
+
+          {/* Agent solo — sans patron */}
+          <button onClick={()=>{setMode("solo");setStep("solo-form");setError("");}}
+            style={{ width:"100%", padding:18, borderRadius:14, background:T.card, border:`1px solid #FFB80050`, color:T.text, fontWeight:700, cursor:"pointer", marginBottom:20, display:"flex", alignItems:"center", gap:14 }}>
+            <div style={{ width:44, height:44, borderRadius:12, background:"linear-gradient(135deg,#FFB800,#E09000)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>🧑‍💼</div>
+            <div style={{ textAlign:"left" }}>
+              <div style={{ fontWeight:800, fontSize:15 }}>Agent indépendant</div>
+              <div style={{ fontSize:12, color:T.sub, marginTop:2 }}>Je travaille seul, sans patron</div>
+            </div>
+            <span style={{ marginLeft:"auto", color:T.faint, fontSize:18 }}>›</span>
+          </button>
+
+          <button onClick={()=>setDark(d=>!d)} style={{ width:"100%", padding:11, borderRadius:12, background:"transparent", border:`1px solid ${T.border}`, color:T.sub, fontSize:12, cursor:"pointer" }}>
             {dark?"☀️ Mode clair":"🌙 Mode sombre"}
           </button>
         </div>)}
@@ -657,7 +681,86 @@ function AuthScreen({ T, dark, setDark, onPatronLogin, onAgentLogin }) {
           <button onClick={()=>setMode("choose")} style={{ width:"100%", marginTop:10, padding:12, borderRadius:12, background:"transparent", border:`1px solid ${T.border}`, color:T.sub, fontSize:13, cursor:"pointer" }}>← Retour</button>
         </div>)}
 
-        {error && !["patron","agent","patron-login","agent-login"].includes(mode) && (
+        {/* ── AGENT SOLO — FORMULAIRE ── */}
+        {mode==="solo" && step==="solo-form" && (<div>
+          <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:24 }}>
+            <div style={{ width:44, height:44, borderRadius:12, background:"linear-gradient(135deg,#FFB800,#E09000)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:20 }}>🧑‍💼</div>
+            <div>
+              <div style={{ fontWeight:900, fontSize:18, color:T.text }}>Agent indépendant</div>
+              <div style={{ fontSize:12, color:T.sub }}>Compte personnel sans patron</div>
+            </div>
+          </div>
+          <div style={{ marginBottom:12 }}>
+            <div style={{ fontSize:11, color:T.sub, marginBottom:7, fontWeight:700, letterSpacing:1 }}>TON NOM COMPLET</div>
+            <input type="text" placeholder="Ex : Koffi Mensah" value={form.nom} onChange={e=>setForm(f=>({...f,nom:e.target.value}))} style={inp} autoFocus />
+          </div>
+          <div style={{ marginBottom:20 }}>
+            <div style={{ fontSize:11, color:T.sub, marginBottom:7, fontWeight:700, letterSpacing:1 }}>TON NUMÉRO</div>
+            <div style={{ display:"flex", gap:8 }}>
+              <div style={{ ...inp, width:"auto", flexShrink:0, padding:"14px 12px", fontWeight:800, fontSize:13 }}>🇧🇯 01</div>
+              <input type="tel" placeholder="XX XX XX XX" maxLength={8} value={form.telephone} onChange={e=>setForm(f=>({...f,telephone:e.target.value.replace(/\D/g,"").slice(0,8)}))} style={{...inp,flex:1}} />
+            </div>
+          </div>
+          {error && <div style={{ background:"#E6394618", color:"#E63946", borderRadius:10, padding:"10px", fontSize:12, fontWeight:700, marginBottom:14 }}>{error}</div>}
+          <button onClick={async()=>{
+            if (!form.nom.trim()) { setError("Entre ton nom"); return; }
+            if (!form.telephone||form.telephone.length!==8) { setError("Entre les 8 chiffres"); return; }
+            const tel="01"+form.telephone;
+            setLoading(true); setError("");
+            const existing=await fetchAgent(tel);
+            if (existing) { setLoading(false); setError("Ce numéro a déjà un compte. Connecte-toi."); return; }
+            const r=await sendOTP(tel); setLoading(false);
+            if (!r.success) { setError(r.error); return; }
+            setStep("solo-otp");
+          }} disabled={loading} style={{ width:"100%", padding:17, borderRadius:14, background:"linear-gradient(135deg,#FFB800,#E09000)", border:"none", color:"#fff", fontWeight:900, fontSize:16, cursor:"pointer", opacity:loading?0.7:1 }}>
+            {loading?"⏳ Envoi SMS...":"Recevoir mon code SMS →"}
+          </button>
+          <button onClick={()=>setMode("choose")} style={{ width:"100%", marginTop:10, padding:12, borderRadius:12, background:"transparent", border:`1px solid ${T.border}`, color:T.sub, fontSize:13, cursor:"pointer" }}>← Retour</button>
+        </div>)}
+
+        {/* ── AGENT SOLO — OTP ── */}
+        {mode==="solo" && step==="solo-otp" && (<div>
+          <div style={{ textAlign:"center", marginBottom:28 }}>
+            <div style={{ fontSize:40, marginBottom:12 }}>📱</div>
+            <div style={{ fontWeight:900, fontSize:20, color:T.text, marginBottom:6 }}>Vérifie ton numéro</div>
+            <div style={{ fontSize:13, color:T.sub }}>Code envoyé au <strong style={{color:T.text}}>+229 01{form.telephone}</strong></div>
+          </div>
+          <input type="tel" placeholder="_ _ _ _ _ _" maxLength={6} value={form.otpCode||""} onChange={e=>setForm(f=>({...f,otpCode:e.target.value.replace(/\D/g,"").slice(0,6)}))} autoFocus
+            style={{...inp,fontSize:28,fontWeight:800,textAlign:"center",letterSpacing:12,marginBottom:14,border:`2px solid ${(form.otpCode||"").length===6?"#FFB800":T.border}`}} />
+          {error && <div style={{ background:"#E6394618", color:"#E63946", borderRadius:10, padding:"10px", fontSize:12, fontWeight:700, marginBottom:14, textAlign:"center" }}>{error}</div>}
+          <button onClick={async()=>{
+            const tel="01"+form.telephone;
+            setLoading(true); setError("");
+            const r=await verifyOTP(tel,form.otpCode||""); setLoading(false);
+            if (!r.success) { setError(r.error); return; }
+            setStep("solo-pin");
+          }} disabled={loading||(form.otpCode||"").length!==6}
+            style={{ width:"100%", padding:16, borderRadius:12, background:(form.otpCode||"").length===6?"linear-gradient(135deg,#FFB800,#E09000)":T.hero, border:"none", color:(form.otpCode||"").length===6?"#fff":T.sub, fontWeight:900, fontSize:15, cursor:"pointer" }}>
+            {loading?"⏳...":"✅ Confirmer"}
+          </button>
+        </div>)}
+
+        {/* ── AGENT SOLO — PIN ── */}
+        {mode==="solo" && step==="solo-pin" && (
+          <PinPad title="Crée ton PIN 🔐" subtitle="4 chiffres pour sécuriser ton compte" T={T} onSubmit={p=>{setForm(f=>({...f,_pin1:p}));setStep("solo-pin-confirm");}} />
+        )}
+        {mode==="solo" && step==="solo-pin-confirm" && (
+          <PinPad title="Confirme ton PIN" subtitle="Retape les mêmes 4 chiffres" T={T} error={error} onSubmit={async p=>{
+            if (p!==form._pin1) { setError("PIN ne correspondent pas"); setStep("solo-pin"); return; }
+            setLoading(true);
+            const pinHash=await hashPin(p);
+            const tel="01"+form.telephone;
+            // patron_id = null → agent solo
+            const agentData={telephone:tel,nom:form.nom.trim(),patron_id:null,pin:pinHash,phone_verified:true};
+            const saved=await saveAgent(agentData);
+            setLoading(false);
+            if (!saved) { setError("Erreur. Réessaie."); return; }
+            lsSet("cp_agent",{...saved,pin:pinHash});
+            onAgentLogin({...saved,pin:pinHash});
+          }} />
+        )}
+
+        {error && !["patron","agent","patron-login","agent-login","solo"].includes(mode) && (
           <div style={{ color:"#E63946", fontSize:12, textAlign:"center", marginTop:14, fontWeight:700, background:"#E6394612", border:"1px solid #E6394630", borderRadius:10, padding:"10px 14px" }}>{error}</div>
         )}
       </div>
@@ -980,8 +1083,8 @@ export default function CashPoint() {
   const totalAgentCA  = agentTxs.reduce((s,t)=>s+Number(t.montant),0);
   const totalAgentCom = agentTxs.filter(t=>t.type==="retrait").reduce((s,t)=>s+Number(t.commission),0);
 
-  const NAV_PATRON = [["dashboard","📊","Dashboard"],["agents","👷","Agents"],["profil","👤","Profil"]];
-  const NAV_AGENT  = [["accueil","🏠","Accueil"],["stats","📊","Stats"],["historique","🗂️","Historique"],["profil","👤","Profil"]];
+  const NAV_PATRON = [["dashboard","◈","Dashboard"],["agents","◉","Agents"],["profil","○","Profil"]];
+  const NAV_AGENT  = [["accueil","⌂","Accueil"],["stats","◈","Stats"],["historique","≡","Historique"],["profil","○","Profil"]];
 
   const modalWrap = { position:"fixed", inset:0, background:"#000C", display:"flex", alignItems:"flex-end", zIndex:200 };
   const modalBox  = { width:"100%", background:T.card, borderRadius:"22px 22px 0 0", padding:"16px 18px 48px", maxHeight:"90vh", overflowY:"auto" };
@@ -1087,7 +1190,7 @@ export default function CashPoint() {
             const s=getAgentStats(ag.id);
             const actif=s.nbOps>0;
             const cashColor=s.cashActuel===null?T.sub:s.cashActuel<0?"#E63946":s.cashActuel/(s.cashDepart||1)<0.2?"#FFB800":"#00C896";
-            return (<div key={ag.id} onClick={()=>setSelectedAgent(ag)} style={{ background:T.card, borderRadius:16, padding:16, marginBottom:12, border:`1px solid ${T.border}`, borderLeft:`3px solid ${actif?"#00C896":"#4A5060"}`, cursor:"pointer" }}>
+            return (<div key={ag.id} onClick={()=>setSelectedAgent(ag)} style={{ background:T.card, borderRadius:16, padding:16, marginBottom:10, border:`1px solid ${T.border}`, borderLeft:`2px solid ${actif?"#00C896":"#4A5060"}`, cursor:"pointer" }}>
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
                 <div>
                   <div style={{ fontWeight:800, fontSize:15 }}>👷 {ag.nom}</div>
@@ -1358,87 +1461,32 @@ export default function CashPoint() {
             })}
           </div>
 
-          {/* Vente d'unités (forfaits) */}
-          {isToday && (<div style={{ background:T.card, borderRadius:16, padding:18, marginBottom:14, border:"1px solid #9B5FDE30" }}>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
-              <div><div style={{ fontWeight:800, fontSize:14 }}>📦 Vente d'unités</div><div style={{ fontSize:11, color:T.sub }}>3 taps pour enregistrer</div></div>
-              <div style={{ fontSize:11, color:"#9B5FDE", fontWeight:700 }}>{agentTxs.filter(t=>t.type==="forfait").length} vendu(s)</div>
-            </div>
-            <div style={{ marginBottom:10 }}>
-              <div style={{ fontSize:10, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:8 }}>1 — TYPE</div>
-              <div style={{ display:"flex", gap:8 }}>
-                {[["internet","🌐","Internet"],["appel","📞","Appel"],["simple","📱","Simple"]].map(([k,ico,lbl])=>(
-                  <button key={k} onClick={()=>setForm(f=>({...f,forfaitType:f.forfaitType===k?null:k,forfaitPrix:null}))}
-                    style={{ flex:1, padding:"10px 4px", borderRadius:11, border:`2px solid ${form.forfaitType===k?"#9B5FDE":T.border}`, background:form.forfaitType===k?"#9B5FDE18":"transparent", color:form.forfaitType===k?"#9B5FDE":T.sub, fontWeight:800, fontSize:12, cursor:"pointer", textAlign:"center" }}>
-                    <div style={{ fontSize:16 }}>{ico}</div><div style={{ marginTop:2 }}>{lbl}</div>
-                  </button>
-                ))}
-              </div>
-            </div>
-            {form.forfaitType && (<div style={{ marginBottom:10 }}>
-              <div style={{ fontSize:10, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:8 }}>2 — RÉSEAU</div>
-              <div style={{ display:"flex", gap:8 }}>
-                {OPS.map(op=>(
-                  <button key={op} onClick={()=>setForm(f=>({...f,forfaitOp:f.forfaitOp===op?null:op,forfaitPrix:null}))}
-                    style={{ flex:1, padding:"10px 0", borderRadius:11, border:`2px solid ${form.forfaitOp===op?OP_COLORS[op]:T.border}`, background:form.forfaitOp===op?OP_BG[op]:"transparent", color:form.forfaitOp===op?OP_COLORS[op]:T.sub, fontWeight:800, fontSize:13, cursor:"pointer" }}>
-                    {op}
-                  </button>
-                ))}
-              </div>
-            </div>)}
-            {form.forfaitType&&form.forfaitOp&&(()=>{
-              const G={MTN:{internet:[100,300,500,1000,2000,3500,6000,15100,25000,50000,100000],appel:[100,150,200,300,500,1000,2500,5000],simple:[100,200,500,1000,2000,5000]},MOOV:{internet:[200,500,1000,2000,4500,8000,15000,20000,50000],appel:[100,200,500,1000,2500,5000],simple:[100,200,500,1000,5000]},Celtiis:{internet:[1000,3000,5000,10000,20000],appel:[100,200,500,1500,3000,5000,10000],simple:[200,500,1000,2000,5000]}};
-              const prix=G[form.forfaitOp]?.[form.forfaitType]||[];
-              return (<div style={{ marginBottom:10 }}>
-                <div style={{ fontSize:10, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:8 }}>3 — MONTANT</div>
-                <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
-                  {prix.map(p=>(<button key={p} onClick={()=>setForm(f=>({...f,forfaitPrix:p}))}
-                    style={{ padding:"7px 12px", borderRadius:9, border:`2px solid ${form.forfaitPrix===p?OP_COLORS[form.forfaitOp]:T.border}`, background:form.forfaitPrix===p?OP_BG[form.forfaitOp]:"transparent", color:form.forfaitPrix===p?OP_COLORS[form.forfaitOp]:T.sub, fontWeight:700, fontSize:12, cursor:"pointer" }}>
-                    {p>=1000?`${p/1000}k`:p} F
-                  </button>))}
-                </div>
-              </div>);
-            })()}
-            {form.forfaitType&&form.forfaitOp&&form.forfaitPrix&&(<button onClick={async()=>{
-              setSaving(true);
-              const uid=agent.id||agent.telephone; const localId=Date.now();
-              const lbls={internet:"🌐 Internet",appel:"📞 Appel",simple:"📱 Simple"};
-              const tx={agent_id:agent.id,patron_id:agent.patron_id,type:"forfait",operateur:form.forfaitOp,montant:Number(form.forfaitPrix),commission:0,client:lbls[form.forfaitType]||"Forfait",telephone:null,heure:new Date().toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}),created_at:nowISO(),localId};
-              const opt={...tx,id:localId}; setAgentTxs(p=>[opt,...p]);
-              const result=await saveTx(tx);
-              if(result.ok){setAgentTxs(p=>p.map(t=>t.id===localId?result.data:t));}
-              else{console.error("❌ Forfait Supabase:",result.error);const pend=lsGet(pendKey(uid))||[];lsSet(pendKey(uid),[...pend,tx]);setPendingCount(c=>c+1);}
-              lsSet(txKey(selectedDate,uid),[(result.ok?result.data:opt),...(lsGet(txKey(selectedDate,uid))||[])]);
-              setSaving(false); setForm({});
-              if(result.ok){setFlash("forfait"); setTimeout(()=>setFlash(null),2200);}
-              setTimeout(()=>loadAgentTxs(selectedDate),1200);
-            }} disabled={saving} style={{ width:"100%", padding:14, borderRadius:12, background:saving?"#1A1D2E":"linear-gradient(135deg,#9B5FDE,#7B2FBE)", border:"none", color:saving?T.sub:"#fff", fontWeight:900, fontSize:14, cursor:saving?"not-allowed":"pointer" }}>
-              {saving?"⏳ Sauvegarde…":`✅ ${form.forfaitOp} ${form.forfaitType} ${fF(form.forfaitPrix)}`}
-            </button>)}
-          </div>)}
-
-          {/* Bouton rapport */}
-          <button onClick={()=>setShowReport(true)} style={{ width:"100%", padding:14, borderRadius:14, background:"linear-gradient(135deg,#25D366,#128C7E)", border:"none", color:"#fff", fontWeight:800, fontSize:14, cursor:"pointer", marginBottom:14, display:"flex", alignItems:"center", justifyContent:"center", gap:10 }}>
-            <span style={{ fontSize:18 }}>📤</span> Envoyer le point du jour
-          </button>
-
           {/* Opérations récentes */}
-          <div style={{ background:T.card, borderRadius:14, padding:16, border:`1px solid ${T.border}` }}>
-            <div style={{ fontWeight:800, fontSize:13, marginBottom:12 }}>Opérations du jour</div>
-            {loading&&<div style={{ textAlign:"center", color:T.faint, padding:"24px 0" }}>⏳ Chargement...</div>}
-            {!loading&&agentTxs.length===0&&<div style={{ textAlign:"center", color:T.faint, padding:"32px 0", fontSize:13 }}>{isToday?"Aucune opération · Appuie sur ⬇️ ou ⬆️":"Aucune opération ce jour"}</div>}
+          <div style={{ background:T.card, borderRadius:16, padding:16, border:`1px solid ${T.border}` }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
+              <div style={{ fontWeight:800, fontSize:13 }}>Opérations du jour</div>
+              {agentTxs.length>0 && <div style={{ fontSize:11, color:T.sub }}>{agentTxs.length} opération{agentTxs.length>1?"s":""}</div>}
+            </div>
+            {loading&&<div style={{ textAlign:"center", color:T.faint, padding:"24px 0", fontSize:13 }}>Chargement...</div>}
+            {!loading&&agentTxs.length===0&&<div style={{ textAlign:"center", color:T.faint, padding:"32px 0", fontSize:13 }}>{isToday?"Aucune opération · Utilise ↙ Dépôt ou ↗ Retrait":"Aucune opération ce jour"}</div>}
             {agentTxs.slice(0,8).map((t,i)=>(
-              <div key={t.id} style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 0", borderBottom:i<Math.min(agentTxs.length,8)-1?`1px solid ${T.border}`:"none" }}>
-                <div style={{ width:36, height:36, borderRadius:10, background:`${TYPE_COLOR[t.type]}15`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16, flexShrink:0 }}>{TYPE_ICON[t.type]}</div>
-                <div style={{ flex:1 }}>
-                  <div style={{ fontSize:13, fontWeight:700 }}>{TYPE_LABEL[t.type]} <span style={{ color:OP_COLORS[t.operateur] }}>{t.operateur}</span></div>
-                  <div style={{ fontSize:11, color:T.sub }}>{t.telephone||"—"} · {t.heure}</div>
+              <div key={t.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"11px 0", borderBottom:i<Math.min(agentTxs.length,8)-1?`1px solid ${T.border}`:"none" }}>
+                {/* Icône type — cercle coloré */}
+                <div style={{ width:38, height:38, borderRadius:"50%", background:`${TYPE_COLOR[t.type]}18`, border:`1px solid ${TYPE_COLOR[t.type]}30`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                  <span style={{ fontSize:14, fontWeight:900, color:TYPE_COLOR[t.type] }}>{TYPE_ICON[t.type]}</span>
                 </div>
-                <div style={{ textAlign:"right" }}>
-                  <div style={{ fontWeight:900, color:TYPE_COLOR[t.type], fontSize:14 }}>{fF(t.montant)}</div>
-                  {t.commission>0&&<div style={{ fontSize:11, color:"#FFB800" }}>+{fF(t.commission)}</div>}
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontSize:13, fontWeight:700 }}>
+                    {TYPE_LABEL[t.type]}
+                    <span style={{ color:OP_COLORS[t.operateur], marginLeft:6, fontSize:12, fontWeight:600 }}>{t.operateur}</span>
+                  </div>
+                  <div style={{ fontSize:11, color:T.faint, marginTop:1 }}>{t.telephone||"—"} · {t.heure}</div>
                 </div>
-                {isToday&&<button onClick={()=>setConfirm(t.id)} style={{ background:"none", border:"none", color:T.faint, cursor:"pointer", fontSize:15, padding:"0 4px" }}>🗑️</button>}
+                <div style={{ textAlign:"right", flexShrink:0 }}>
+                  <div style={{ fontWeight:800, color:TYPE_COLOR[t.type], fontSize:14 }}>{fF(t.montant)}</div>
+                  {t.commission>0&&<div style={{ fontSize:10, color:"#FFB800", marginTop:1 }}>frais {fF(t.commission)}</div>}
+                </div>
+                {isToday&&<button onClick={()=>setConfirm(t.id)} style={{ background:"none", border:"none", color:T.faint, cursor:"pointer", fontSize:13, padding:"0 4px", opacity:0.6 }}>✕</button>}
               </div>
             ))}
           </div>
@@ -1503,12 +1551,27 @@ export default function CashPoint() {
           <div style={{ fontWeight:900, fontSize:20, marginBottom:20 }}>👤 Profil</div>
           <div style={{ background:T.card, borderRadius:16, padding:20, marginBottom:14, border:`1px solid ${T.border}` }}>
             {isPatron&&(<>
-              <div style={{ fontSize:11, color:T.sub, marginBottom:12, fontWeight:700 }}>COMPTE PATRON</div>
-              {[["👑 Nom",patron.nom],["📞 Téléphone",patron.telephone],["🏢 Entreprise",patron.nom_entreprise],["📋 RC",patron.registre_commerce],["🌍 Pays",patron.pays]].map(([l,v])=>(
+              <div style={{ fontSize:11, color:T.sub, marginBottom:12, fontWeight:700, letterSpacing:1 }}>COMPTE PATRON</div>
+              {[["Nom",patron.nom],["Téléphone",patron.telephone],["Entreprise",patron.nom_entreprise],["RC",patron.registre_commerce],["Pays",patron.pays]].map(([l,v])=>(
                 <div key={l} style={{ display:"flex", justifyContent:"space-between", padding:"10px 0", borderBottom:`1px solid ${T.border}` }}>
                   <span style={{ fontSize:13, color:T.sub }}>{l}</span><span style={{ fontSize:13, fontWeight:700 }}>{v}</span>
                 </div>
               ))}
+              {/* Abonnement */}
+              <div style={{ marginTop:16, background: agents.length>0?"#00C89610":"#FFB80010", border:`1px solid ${agents.length>0?"#00C89630":"#FFB80030"}`, borderRadius:12, padding:"14px 16px" }}>
+                <div style={{ fontSize:11, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:8 }}>ABONNEMENT</div>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                  <div>
+                    <div style={{ fontSize:13, fontWeight:700 }}>{agents.length} agent{agents.length>1?"s":""} actif{agents.length>1?"s":""}</div>
+                    <div style={{ fontSize:11, color:T.sub, marginTop:2 }}>1 999 F × {agents.length} agent{agents.length>1?"s":""}</div>
+                  </div>
+                  <div style={{ textAlign:"right" }}>
+                    <div style={{ fontSize:20, fontWeight:900, color: agents.length>0?"#00C896":"#FFB800" }}>{(1999*agents.length).toLocaleString("fr-FR")} F</div>
+                    <div style={{ fontSize:10, color:T.sub }}>/ mois</div>
+                  </div>
+                </div>
+                {agents.length===0 && <div style={{ fontSize:11, color:"#FFB800", marginTop:8 }}>Aucun agent — ajoutez votre premier agent</div>}
+              </div>
             </>)}
             {isAgent&&(<>
               <div style={{ fontSize:11, color:T.sub, marginBottom:12, fontWeight:700 }}>COMPTE AGENT</div>
@@ -1526,15 +1589,23 @@ export default function CashPoint() {
             <div><div style={{ fontWeight:700, fontSize:13 }}>{dark?"Mode sombre":"Mode clair"}</div><div style={{ fontSize:11, color:T.sub }}>Changer l'apparence</div></div>
             <button onClick={()=>setDark(d=>!d)} style={{ padding:"8px 16px", borderRadius:10, background:T.hero, border:`1px solid ${T.border}`, color:T.text, fontSize:13, fontWeight:700, cursor:"pointer" }}>{dark?"☀️":"🌙"}</button>
           </div>
-          <button onClick={()=>setConfirmLogout(true)} style={{ width:"100%", padding:16, borderRadius:14, background:"#E6394618", border:"2px solid #E6394640", color:"#E63946", fontWeight:800, fontSize:15, cursor:"pointer" }}>🔓 Se déconnecter</button>
+          <button onClick={()=>setConfirmLogout(true)} style={{ width:"100%", padding:16, borderRadius:14, background:"#E6394618", border:"1px solid #E6394640", color:"#E63946", fontWeight:800, fontSize:15, cursor:"pointer" }}>🔓 Se déconnecter</button>
         </div>)}
 
       </main>
 
       {/* ══ FABs AGENT ══════════════════════════════════════════════════ */}
-      {isAgent && tab==="accueil" && isToday && (<div style={{ position:"fixed", bottom:90, right:16, display:"flex", flexDirection:"column", gap:10, zIndex:60 }}>
-        <button onClick={()=>{setModal("retrait");setForm({});setRetraitDist(false);}} style={{ height:48, paddingLeft:16, paddingRight:18, borderRadius:24, background:"#4F8EF7", border:"none", color:"#fff", fontSize:13, fontWeight:800, cursor:"pointer", boxShadow:"0 4px 18px #4F8EF760", display:"flex", alignItems:"center", gap:8 }}><span>⬆️</span> Retrait</button>
-        <button onClick={()=>{setModal("depot");setForm({});}} style={{ height:54, paddingLeft:18, paddingRight:20, borderRadius:27, background:"linear-gradient(135deg,#00C896,#009E78)", border:"none", color:"#fff", fontSize:14, fontWeight:900, cursor:"pointer", boxShadow:"0 6px 24px #00C89660", display:"flex", alignItems:"center", gap:8 }}><span>⬇️</span> Dépôt</button>
+      {isAgent && tab==="accueil" && isToday && (<div style={{ position:"fixed", bottom:90, right:16, display:"flex", flexDirection:"column", gap:8, zIndex:60 }}>
+        <button onClick={()=>{setModal("retrait");setForm({});setRetraitDist(false);}}
+          style={{ height:44, paddingLeft:14, paddingRight:16, borderRadius:22, background:T.card, border:"1px solid #4F8EF740", color:"#4F8EF7", fontSize:13, fontWeight:700, cursor:"pointer", boxShadow:"0 2px 12px #0004", display:"flex", alignItems:"center", gap:8, letterSpacing:0.3 }}>
+          <span style={{ width:22, height:22, borderRadius:"50%", background:"#4F8EF720", display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, fontWeight:900 }}>↗</span>
+          Retrait
+        </button>
+        <button onClick={()=>{setModal("depot");setForm({});}}
+          style={{ height:50, paddingLeft:16, paddingRight:18, borderRadius:25, background:"linear-gradient(135deg,#00C896,#00A5FF)", border:"none", color:"#fff", fontSize:14, fontWeight:700, cursor:"pointer", boxShadow:"0 4px 16px #00C89650", display:"flex", alignItems:"center", gap:8, letterSpacing:0.3 }}>
+          <span style={{ width:24, height:24, borderRadius:"50%", background:"rgba(255,255,255,0.2)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, fontWeight:900 }}>↙</span>
+          Dépôt
+        </button>
       </div>)}
 
       {/* ══ BOTTOM NAV ══════════════════════════════════════════════════ */}
@@ -1618,7 +1689,7 @@ export default function CashPoint() {
               <button onClick={()=>setShowReport(false)} style={{ background:"#f0f0f0", border:"none", borderRadius:20, width:32, height:32, cursor:"pointer", fontSize:16 }}>✕</button>
             </div>
             <div style={{ background:"#f8f8f8", borderRadius:12, padding:"10px 14px", marginBottom:16, fontSize:13 }}>👤 <strong>{agent.nom}</strong> · {agent.telephone}</div>
-            <div style={{ fontWeight:900, fontSize:13, color:"#00C896", borderBottom:"2px solid #00C89630", paddingBottom:6, marginBottom:12 }}>💵 ARGENT</div>
+            <div style={{ fontWeight:900, fontSize:13, color:"#00C896", borderBottom:"1px solid #00C89630", paddingBottom:6, marginBottom:12 }}>💵 ARGENT</div>
             {OPS.map(op=>{
               const deps=agentTxs.filter(t=>t.type==="depot"&&t.operateur===op);
               const rets=agentTxs.filter(t=>t.type==="retrait"&&t.operateur===op);
@@ -1638,7 +1709,7 @@ export default function CashPoint() {
               </div>
             </div>
             {cashActuel!==null&&(<div style={{ marginBottom:12 }}>
-              <div style={{ fontWeight:900, fontSize:13, color:"#00C896", borderBottom:"2px solid #00C89630", paddingBottom:6, marginBottom:10 }}>💵 CAISSE</div>
+              <div style={{ fontWeight:900, fontSize:13, color:"#00C896", borderBottom:"1px solid #00C89630", paddingBottom:6, marginBottom:10 }}>💵 CAISSE</div>
               <div style={{ display:"flex", justifyContent:"space-between", padding:"6px 0", fontSize:13, borderBottom:"1px solid #eee" }}><span>Départ</span><strong>{fF(capitalCash)}</strong></div>
               <div style={{ display:"flex", justifyContent:"space-between", padding:"6px 0", fontSize:13 }}><span>Maintenant</span><strong style={{color:cashActuel<0?"#E63946":"#00C896"}}>{fF(cashActuel)}</strong></div>
             </div>)}
