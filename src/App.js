@@ -1081,8 +1081,7 @@ export default function CashPoint() {
           {!loading && agents.length===0 && (<div style={{ background:T.card, borderRadius:16, padding:32, textAlign:"center", border:`1px solid ${T.border}` }}>
             <div style={{ fontSize:32, marginBottom:12 }}>👷</div>
             <div style={{ fontWeight:700, marginBottom:8 }}>Aucun agent encore</div>
-            <div style={{ fontSize:12, color:T.sub, marginBottom:20 }}>Génère un code d'invitation pour ajouter ton premier agent</div>
-            <button onClick={()=>setTab("agents")} style={{ background:"linear-gradient(135deg,#00C896,#00A5FF)", border:"none", borderRadius:12, padding:"12px 24px", color:"#fff", fontWeight:800, cursor:"pointer" }}>➕ Ajouter un agent</button>
+            <div style={{ fontSize:12, color:T.sub }}>Va dans l'onglet <strong>Agents</strong> pour générer un code d'invitation.</div>
           </div>)}
           {agents.map(ag=>{
             const s=getAgentStats(ag.id);
