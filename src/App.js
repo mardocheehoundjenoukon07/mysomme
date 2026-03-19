@@ -1299,8 +1299,8 @@ export default function CashPoint() {
                   <div><div style={{ fontSize:11, color:T.sub }}>Départ</div><div style={{ fontSize:14, fontWeight:700, color:T.sub }}>{fF(s.cashDepart)}</div></div>
                   <div style={{ textAlign:"right" }}><div style={{ fontSize:11, color:T.sub }}>Disponible</div><div style={{ fontSize:26, fontWeight:900, color:cashColor }}>{fF(s.cashActuel)}</div></div>
                 </div>
-                <div style={{ height:6, background:T.faint, borderRadius:3, overflow:"hidden", marginBottom:8 }}>
-                  <div style={{ height:"100%", width:`${Math.max(0,Math.min(100,s.cashActuel/(s.cashDepart||1)*100))}%`, background:cashColor, borderRadius:3 }} />
+                <div style={{ height:2, background:T.faint, borderRadius:1, overflow:"hidden", marginBottom:8 }}>
+                  <div style={{ height:"100%", width:`${Math.max(0,Math.min(100,s.cashActuel/(s.cashDepart||1)*100))}%`, background:cashColor, borderRadius:1 }} />
                 </div>
                 <div style={{ display:"flex", gap:8 }}>
                   <div style={{ flex:1, background:"#00C89610", border:"1px solid #00C89625", borderRadius:8, padding:"6px 10px", fontSize:11 }}><span style={{ color:T.sub }}>⬇️ </span><span style={{ color:"#00C896", fontWeight:800 }}>+{fF(s.depots)}</span></div>
@@ -1320,7 +1320,7 @@ export default function CashPoint() {
                     </div>
                     {a!==null?<div style={{ fontSize:16, fontWeight:900, color:a<0?"#E63946":d>0&&a/d<0.15?"#FFB800":"#00C896" }}>{fF(a)}</div>:<div style={{ fontSize:12, color:T.faint }}>Non renseigné</div>}
                   </div>
-                  {d!==null&&d>0&&<div style={{ height:4, background:T.faint, borderRadius:2, overflow:"hidden" }}><div style={{ height:"100%", width:`${Math.max(0,Math.min(100,a/d*100))}%`, background:OP_COLORS[op], borderRadius:2 }} /></div>}
+                  {d!==null&&d>0&&<div style={{ height:2, background:T.faint, borderRadius:1, overflow:"hidden" }}><div style={{ height:"100%", width:`${Math.max(0,Math.min(100,a/d*100))}%`, background:OP_COLORS[op], borderRadius:1 }} /></div>}
                 </div>
               ))}
             </div>
@@ -1412,7 +1412,7 @@ export default function CashPoint() {
                   <div><div style={{ fontSize:11, color:T.sub }}>Départ</div><div style={{ fontSize:15, fontWeight:700, color:T.sub }}>{fF(capitalCash)}</div></div>
                   <div style={{ textAlign:"right" }}><div style={{ fontSize:11, color:T.sub }}>Disponible</div><div style={{ fontSize:26, fontWeight:900, color:cashColor }}>{fF(cashActuel)}</div></div>
                 </div>
-                <div style={{ height:6, background:T.faint, borderRadius:3, overflow:"hidden", marginBottom:10 }}><div style={{ height:"100%", width:`${cashPct}%`, background:cashColor, borderRadius:3, transition:"width 0.4s" }} /></div>
+                <div style={{ height:2, background:T.faint, borderRadius:1, overflow:"hidden", marginBottom:10 }}><div style={{ height:"100%", width:`${cashPct}%`, background:cashColor, borderRadius:1, transition:"width 0.4s" }} /></div>
                 <div style={{ display:"flex", gap:8 }}>
                   {depT>0&&<div style={{ flex:1, background:"#00C89610", border:"1px solid #00C89625", borderRadius:8, padding:"6px 10px", fontSize:11 }}><span style={{ color:T.sub }}>⬇️ </span><span style={{ color:"#00C896", fontWeight:800 }}>+{fF(depT)}</span></div>}
                   {retT>0&&<div style={{ flex:1, background:"#E6394610", border:"1px solid #E6394625", borderRadius:8, padding:"6px 10px", fontSize:11 }}><span style={{ color:T.sub }}>⬆️ </span><span style={{ color:"#E63946", fontWeight:800 }}>-{fF(retT)}</span></div>}
@@ -1450,7 +1450,7 @@ export default function CashPoint() {
                     )}
                   </div>
                 </div>
-                {depart!==null&&actuel!==null&&<div style={{ height:5, background:T.faint, borderRadius:3, overflow:"hidden", marginBottom:6 }}><div style={{ height:"100%", width:`${pct}%`, background:color, borderRadius:3 }} /></div>}
+                {depart!==null&&actuel!==null&&<div style={{ height:2, background:T.faint, borderRadius:1, overflow:"hidden", marginBottom:6 }}><div style={{ height:"100%", width:`${pct}%`, background:OP_COLORS[op], borderRadius:1 }} /></div>}
                 {depart!==null&&(depO>0||retO>0)&&<div style={{ display:"flex", gap:6, marginTop:4 }}>
                   {depO>0&&<div style={{ flex:1, background:"#E6394610", border:"1px solid #E6394620", borderRadius:7, padding:"4px 8px", fontSize:10 }}><span style={{ color:T.sub }}>⬇️ </span><span style={{ color:"#E63946", fontWeight:700 }}>-{fF(depO)}</span></div>}
                   {retO>0&&<div style={{ flex:1, background:"#00C89610", border:"1px solid #00C89620", borderRadius:7, padding:"4px 8px", fontSize:10 }}><span style={{ color:T.sub }}>⬆️ </span><span style={{ color:"#00C896", fontWeight:700 }}>+{fF(retO)}</span></div>}
