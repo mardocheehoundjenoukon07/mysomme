@@ -1276,6 +1276,7 @@ export default function CashPoint() {
 
             </div>);
           })}
+        </div>)}
 
         {/* ══════════════ GESTION AGENTS (PATRON) ═══════════════════════ */}
         {isPatron && tab==="agents" && (<div>
