@@ -236,8 +236,8 @@ async function fetchFloat(agentId, date) {
 async function saveFloat(f) {
   try {
     // Garder seulement les colonnes connues de Supabase
-    const { agent_id, patron_id, date, cash, float_mtn, float_moov, float_celtiis } = f;
-    const cleanFloat = { agent_id, patron_id, date, cash, float_mtn, float_moov, float_celtiis };
+    const { agent_id, patron_id, date, cash, float_mtn, float_moov, float_celtiis, float_mtn_reel, float_moov_reel, float_celtiis_reel } = f;
+    const cleanFloat = { agent_id, patron_id, date, cash, float_mtn, float_moov, float_celtiis, float_mtn_reel, float_moov_reel, float_celtiis_reel };
     const r=await fetch(`${SUPA_URL}/rest/v1/cashpoint_floats`,{
       method:"POST",
       headers:{...H(),"Prefer":"return=representation,resolution=merge-duplicates"},
@@ -818,6 +818,9 @@ export default function CashPoint() {
   const [agentTxs,    setAgentTxs]    = useState([]);
   const [pendingCount,setPendingCount]= useState(0);
   const [showReport,  setShowReport]  = useState(false);
+  const [showCloture, setShowCloture] = useState(false);
+  const [clotureInputs, setClotureInputs] = useState({ MTN:"", MOOV:"", Celtiis:"" });
+  const [clotureData,   setClotureData]   = useState(null); // résultats calculés
   const [retraitDist, setRetraitDist] = useState(false);
   const [floats,      setFloats]      = useState({ MTN:null, MOOV:null, Celtiis:null });
   const [capitalCash, setCapitalCash] = useState(null);
@@ -1070,8 +1073,31 @@ export default function CashPoint() {
     const moovA=fl?Number(fl.float_moov||0)-txs.filter(t=>t.operateur==="MOOV"&&t.type==="depot").reduce((s,t)=>s+Number(t.montant),0)+txs.filter(t=>t.operateur==="MOOV"&&t.type==="retrait").reduce((s,t)=>s+Number(t.montant),0):null;
     const celtA=fl?Number(fl.float_celtiis||0)-txs.filter(t=>t.operateur==="Celtiis"&&t.type==="depot").reduce((s,t)=>s+Number(t.montant),0)+txs.filter(t=>t.operateur==="Celtiis"&&t.type==="retrait").reduce((s,t)=>s+Number(t.montant),0):null;
     const momoA=(mtnA||0)+(moovA||0)+(celtA||0);
-    const pointTotal=cashActuel!==null?cashActuel+momoA:null;
-    return { depots:deps,retraits:rets,fraisRetrait:frais,nbOps:txs.length,lastOp:txs[0]?.heure||null,cashDepart,cashActuel,mtnActuel:mtnA,moovActuel:moovA,celtiisActuel:celtA,momoActuel:momoA,pointTotal,fl };
+    // ── Points POS ──────────────────────────────────────────────────────
+    const momoDepart=fl?(Number(fl.float_mtn||0)+Number(fl.float_moov||0)+Number(fl.float_celtiis||0)):null;
+    const pointMatin=cashDepart!==null&&momoDepart!==null?cashDepart+momoDepart:null;
+    const pointSoir=pointMatin!==null?pointMatin+frais:null;  // théorique
+    const gain=frais;
+    const pointReel=cashActuel!==null?(cashActuel+(momoA||0)):null;
+    const ecart=pointReel!==null&&pointSoir!==null?pointReel-pointSoir:null;
+    const ecartDiag=ecart===null?null:ecart>500?"⚠️ Dépôt client non retiré":ecart<-500?"🚨 Manque — vérifier remise":null;
+    // ── Unités vendues (si clôture saisie) ──────────────────────────────
+    const unitesParOp={};
+    let totalUnites=null;
+    if (fl) {
+      const reelMap={ MTN:fl.float_mtn_reel, MOOV:fl.float_moov_reel, Celtiis:fl.float_celtiis_reel };
+      const theorMap={ MTN:mtnA, MOOV:moovA, Celtiis:celtA };
+      let hasAny=false;
+      ["MTN","MOOV","Celtiis"].forEach(op=>{
+        if (reelMap[op]!==null&&reelMap[op]!==undefined&&theorMap[op]!==null) {
+          unitesParOp[op]={ theorique:theorMap[op], reel:Number(reelMap[op]), unites:theorMap[op]-Number(reelMap[op]) };
+          hasAny=true;
+        }
+      });
+      if (hasAny) totalUnites=Object.values(unitesParOp).reduce((s,v)=>s+v.unites,0);
+    }
+    // ────────────────────────────────────────────────────────────────────
+    return { depots:deps,retraits:rets,fraisRetrait:frais,nbOps:txs.length,lastOp:txs[0]?.heure||null,cashDepart,cashActuel,mtnActuel:mtnA,moovActuel:moovA,celtiisActuel:celtA,momoActuel:momoA,pointTotal:cashActuel!==null?cashActuel+momoA:null,pointMatin,pointSoir,pointReel,ecart,ecartDiag,gain,unitesParOp,totalUnites,fl };
   }
 
   // ── GARDES ──────────────────────────────────────────────────────────────────
@@ -1153,28 +1179,61 @@ export default function CashPoint() {
             </div>
           )}
 
-          {/* Résumé global */}
+          {/* Résumé global POS */}
           {(()=>{
-            const totalCA=allTxs.reduce((s,t)=>s+Number(t.montant),0);
             const totalFrais=allTxs.filter(t=>t.type==="retrait").reduce((s,t)=>s+Number(t.commission),0);
-            const totalCash=allFloats.reduce((s,f)=>s+Number(f.cash||0),0);
+            const agentStats=agents.map(ag=>getAgentStats(ag.id));
+            const totalMatin=agentStats.reduce((s,st)=>s+(st.pointMatin||0),0);
+            const totalSoir=totalMatin+totalFrais;
+            const totalReel=agentStats.reduce((s,st)=>s+(st.pointReel||0),0);
+            const totalEcart=totalReel&&totalSoir?totalReel-totalSoir:null;
+            const nbAlerte=agentStats.filter(st=>st.ecart!==null&&Math.abs(st.ecart)>500).length;
+            const ecartColor=totalEcart===null?"#4A5060":Math.abs(totalEcart)<=500?"#00C896":totalEcart>0?"#FFB800":"#E63946";
+            const totalUnites=agentStats.reduce((s,st)=>s+(st.totalUnites||0),0);
+            const nbClotures=agentStats.filter(st=>st.totalUnites!==null).length;
             return (<div style={{ marginBottom:20 }}>
+              {/* Ligne 1 : Point matin + Gain */}
               <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:10 }}>
                 <div style={{ background:T.card, borderRadius:14, padding:"14px 16px", border:`1px solid ${T.border}` }}>
-                  <div style={{ fontSize:10, color:T.sub, marginBottom:4, letterSpacing:1, fontWeight:700 }}>CHIFFRE D'AFFAIRES</div>
-                  <div style={{ fontSize:22, fontWeight:900, color:"#00C896" }}>{fF(totalCA)}</div>
-                  <div style={{ fontSize:11, color:T.sub, marginTop:2 }}>{allTxs.length} opérations</div>
+                  <div style={{ fontSize:10, color:T.sub, marginBottom:4, letterSpacing:1, fontWeight:700 }}>🌅 POINT DU MATIN</div>
+                  <div style={{ fontSize:20, fontWeight:900, color:T.text }}>{fF(totalMatin)}</div>
+                  <div style={{ fontSize:11, color:T.sub, marginTop:2 }}>Cash + MoMo · {agents.length} agent{agents.length>1?"s":""}</div>
                 </div>
-                <div style={{ background:T.card, borderRadius:14, padding:"14px 16px", border:`1px solid ${T.border}` }}>
-                  <div style={{ fontSize:10, color:T.sub, marginBottom:4, letterSpacing:1, fontWeight:700 }}>FRAIS DE RETRAIT</div>
-                  <div style={{ fontSize:22, fontWeight:900, color:"#FFB800" }}>{fF(totalFrais)}</div>
-                  <div style={{ fontSize:11, color:T.sub, marginTop:2 }}>du jour</div>
+                <div style={{ background:"#FFB80012", borderRadius:14, padding:"14px 16px", border:"1px solid #FFB80030" }}>
+                  <div style={{ fontSize:10, color:T.sub, marginBottom:4, letterSpacing:1, fontWeight:700 }}>💰 GAIN DU JOUR</div>
+                  <div style={{ fontSize:20, fontWeight:900, color:"#FFB800" }}>+{fF(totalFrais)}</div>
+                  <div style={{ fontSize:11, color:T.sub, marginTop:2 }}>Frais collectés</div>
                 </div>
               </div>
-              {totalCash>0 && <div style={{ background:T.card, borderRadius:14, padding:"14px 16px", border:"1px solid #00C89630" }}>
-                <div style={{ fontSize:10, color:T.sub, marginBottom:4, letterSpacing:1, fontWeight:700 }}>💵 CASH TOTAL DE DÉPART (tous agents)</div>
-                <div style={{ fontSize:20, fontWeight:900, color:"#00C896" }}>{fF(totalCash)}</div>
-              </div>}
+              {/* Point du soir */}
+              <div style={{ background:"linear-gradient(135deg,#00C89615,#00A5FF12)", borderRadius:14, padding:"13px 16px", border:"1px solid #00C89630", display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+                <div>
+                  <div style={{ fontSize:10, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:3 }}>🌙 POINT DU SOIR PRÉVU</div>
+                  <div style={{ fontSize:11, color:T.sub }}>{fF(totalMatin)} + {fF(totalFrais)}</div>
+                </div>
+                <div style={{ fontSize:24, fontWeight:900, color:"#00C896" }}>{fF(totalSoir)}</div>
+              </div>
+              {/* Écart global */}
+              {totalEcart!==null&&(<div style={{ background:`${ecartColor}12`, borderRadius:14, padding:"12px 16px", border:`1px solid ${ecartColor}30`, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                <div>
+                  <div style={{ fontSize:10, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:3 }}>📐 ÉCART GLOBAL</div>
+                  <div style={{ fontSize:12, fontWeight:700, color:ecartColor }}>
+                    {Math.abs(totalEcart)<=500?"✅ Équipe à l'équilibre":totalEcart>0?"⚠️ Dépôts bloqués chez des agents":"🚨 Manque détecté dans l'équipe"}
+                    {nbAlerte>0&&<span style={{ marginLeft:6, background:`${ecartColor}25`, borderRadius:6, padding:"2px 8px", fontSize:10 }}>{nbAlerte} agent{nbAlerte>1?"s":""} concerné{nbAlerte>1?"s":""}</span>}
+                  </div>
+                </div>
+                <div style={{ textAlign:"right" }}>
+                  <div style={{ fontSize:20, fontWeight:900, color:ecartColor }}>{totalEcart>0?"+":""}{fF(totalEcart)}</div>
+                </div>
+              </div>)}
+              {/* Unités vendues total équipe */}
+              {nbClotures>0&&(<div style={{ background:"#7B2FBE12", borderRadius:14, padding:"12px 16px", border:"1px solid #7B2FBE30", display:"flex", justifyContent:"space-between", alignItems:"center", marginTop:10 }}>
+                <div>
+                  <div style={{ fontSize:10, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:3 }}>📦 UNITÉS VENDUES</div>
+                  <div style={{ fontSize:11, color:T.faint }}>{nbClotures} agent{nbClotures>1?"s":""} avec clôture</div>
+                </div>
+                <div style={{ fontSize:20, fontWeight:900, color:"#9B5FDE" }}>{fF(totalUnites)}</div>
+              </div>)}
             </div>);
           })()}
 
@@ -1201,83 +1260,27 @@ export default function CashPoint() {
                   <span style={{ color:T.sub, fontSize:16 }}>›</span>
                 </div>
               </div>
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:8 }}>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom: s.ecart!==null?8:0 }}>
                 <div style={{ background:T.hero, borderRadius:10, padding:"10px 12px" }}>
-                  <div style={{ fontSize:10, color:T.sub, marginBottom:3 }}>CA DU JOUR</div>
-                  <div style={{ fontSize:15, fontWeight:900, color:"#00C896" }}>{fF(s.depots+s.retraits)}</div>
+                  <div style={{ fontSize:10, color:T.sub, marginBottom:3 }}>🌅 PT MATIN</div>
+                  <div style={{ fontSize:14, fontWeight:900, color:T.text }}>{s.pointMatin!==null?fF(s.pointMatin):"—"}</div>
                 </div>
-                <div style={{ background:T.hero, borderRadius:10, padding:"10px 12px" }}>
-                  <div style={{ fontSize:10, color:T.sub, marginBottom:3 }}>FRAIS DE RETRAIT</div>
-                  <div style={{ fontSize:15, fontWeight:900, color:"#FFB800" }}>{fF(s.fraisRetrait)}</div>
+                <div style={{ background:"#FFB80010", borderRadius:10, padding:"10px 12px", border:"1px solid #FFB80020" }}>
+                  <div style={{ fontSize:10, color:T.sub, marginBottom:3 }}>💰 GAIN</div>
+                  <div style={{ fontSize:14, fontWeight:900, color:"#FFB800" }}>+{fF(s.fraisRetrait)}</div>
                 </div>
               </div>
-              {s.cashActuel!==null && (<div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
-                <div style={{ background:T.hero, borderRadius:10, padding:"10px 12px" }}>
-                  <div style={{ fontSize:10, color:T.sub, marginBottom:3 }}>💵 CASH EN SAC</div>
-                  <div style={{ fontSize:15, fontWeight:900, color:cashColor }}>{fF(s.cashActuel)}</div>
+              {s.ecart!==null&&(<div style={{ background:`${s.ecart>500?"#FFB800":s.ecart<-500?"#E63946":"#00C896"}12`, borderRadius:10, padding:"8px 12px", border:`1px solid ${s.ecart>500?"#FFB80030":s.ecart<-500?"#E6394630":"#00C89625"}`, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                <div style={{ fontSize:11, fontWeight:700, color:s.ecart>500?"#FFB800":s.ecart<-500?"#E63946":"#00C896" }}>
+                  {s.ecart>500?"⚠️ Dépôt bloqué":s.ecart<-500?"🚨 Manque":"✅ Équilibré"}
                 </div>
-                <div style={{ background:"#00C89610", borderRadius:10, padding:"10px 12px", border:"1px solid #00C89625" }}>
-                  <div style={{ fontSize:10, color:T.sub, marginBottom:3 }}>📊 POINT TOTAL</div>
-                  <div style={{ fontSize:15, fontWeight:900, color:"#00C896" }}>{fF(s.pointTotal)}</div>
+                <div style={{ fontSize:13, fontWeight:900, color:s.ecart>500?"#FFB800":s.ecart<-500?"#E63946":"#00C896" }}>
+                  {s.ecart>0?"+":""}{fF(s.ecart)}
                 </div>
               </div>)}
             </div>);
           })}
 
-          {/* ══ FIL DES TRANSACTIONS EN DIRECT ══════════════════════════ */}
-          {allTxs.length > 0 && (
-            <div style={{ background:T.card, borderRadius:16, padding:18, marginTop:8, border:`1px solid ${T.border}` }}>
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
-                <div>
-                  <div style={{ fontWeight:800, fontSize:14 }}>📋 Opérations en direct</div>
-                  <div style={{ fontSize:11, color:T.sub, marginTop:2 }}>{allTxs.length} opération{allTxs.length>1?"s":""} aujourd'hui</div>
-                </div>
-                <div style={{ background:"#00C89618", borderRadius:8, padding:"4px 10px", fontSize:10, fontWeight:800, color:"#00C896" }}>🔴 LIVE</div>
-              </div>
-
-              {/* Totaux rapides */}
-              <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:8, marginBottom:16 }}>
-                {[
-                  ["⬇️ Dépôts", allTxs.filter(t=>t.type==="depot").length, allTxs.filter(t=>t.type==="depot").reduce((s,t)=>s+Number(t.montant),0), "#00C896"],
-                  ["⬆️ Retraits", allTxs.filter(t=>t.type==="retrait").length, allTxs.filter(t=>t.type==="retrait").reduce((s,t)=>s+Number(t.montant),0), "#4F8EF7"],
-                  ["💰 Frais", allTxs.filter(t=>t.type==="retrait").length, allTxs.filter(t=>t.type==="retrait").reduce((s,t)=>s+Number(t.commission),0), "#FFB800"],
-                ].map(([lbl,nb,total,col])=>(
-                  <div key={lbl} style={{ background:T.hero, borderRadius:10, padding:"10px 8px", textAlign:"center" }}>
-                    <div style={{ fontSize:10, color:T.sub, marginBottom:4 }}>{lbl}</div>
-                    <div style={{ fontSize:14, fontWeight:900, color:col }}>{fF(total)}</div>
-                    <div style={{ fontSize:10, color:T.faint }}>{nb} op</div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Liste des transactions */}
-              {allTxs.map((t,i) => {
-                const agNom = agents.find(a=>a.id===t.agent_id)?.nom || "Agent";
-                return (
-                  <div key={t.id||i} style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 0", borderBottom: i<allTxs.length-1?`1px solid ${T.border}`:"none" }}>
-                    {/* Icône type */}
-                    <div style={{ width:36, height:36, borderRadius:10, background:`${TYPE_COLOR[t.type]||"#00C896"}18`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16, flexShrink:0 }}>
-                      {TYPE_ICON[t.type]||"💳"}
-                    </div>
-                    {/* Info */}
-                    <div style={{ flex:1, minWidth:0 }}>
-                      <div style={{ fontSize:13, fontWeight:700 }}>
-                        {TYPE_LABEL[t.type]} <span style={{ color:OP_COLORS[t.operateur] }}>{t.operateur}</span>
-                      </div>
-                      <div style={{ fontSize:11, color:T.sub }}>
-                        👷 {agNom} · {t.heure||""}
-                      </div>
-                    </div>
-                    {/* Montant + frais */}
-                    <div style={{ textAlign:"right", flexShrink:0 }}>
-                      <div style={{ fontWeight:900, color:TYPE_COLOR[t.type]||"#00C896", fontSize:14 }}>{fF(t.montant)}</div>
-                      {t.commission>0 && <div style={{ fontSize:11, color:"#FFB800", fontWeight:700 }}>frais {fF(t.commission)}</div>}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
 
         </div>)}
 
@@ -1324,24 +1327,99 @@ export default function CashPoint() {
                 </div>
               ))}
             </div>
-            {/* Point total */}
-            <div style={{ background:"linear-gradient(135deg,#00C89615,#00A5FF10)", borderRadius:16, padding:18, marginBottom:12, border:"1px solid #00C89635" }}>
-              <div style={{ fontSize:11, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:8 }}>📊 POINT TOTAL DU JOUR</div>
-              {[["Argent liquide",fF(s.cashActuel!==null?s.cashActuel:0),cashColor],["Total MoMo",fF(s.momoActuel),"#9B5FDE"]].map(([lbl,val,col])=>(
-                <div key={lbl} style={{ display:"flex", justifyContent:"space-between", marginBottom:10 }}><div style={{ fontSize:13, color:T.sub }}>{lbl}</div><div style={{ fontSize:15, fontWeight:800, color:col }}>{val}</div></div>
-              ))}
-              <div style={{ height:1, background:T.border, margin:"10px 0" }} />
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                <div style={{ fontSize:14, fontWeight:800 }}>TOTAL GÉNÉRAL</div>
-                <div style={{ fontSize:24, fontWeight:900, color:"#00C896" }}>{s.pointTotal!==null?fF(s.pointTotal):"—"}</div>
+            {/* Points POS */}
+            <div style={{ borderRadius:16, marginBottom:12, overflow:"hidden" }}>
+              {/* Point du matin */}
+              <div style={{ background:T.hero, border:`1px solid ${T.border}`, borderRadius:16, padding:16, marginBottom:8 }}>
+                <div style={{ fontSize:10, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:10 }}>🌅 POINT DU MATIN</div>
+                <div style={{ display:"flex", gap:8, marginBottom:10 }}>
+                  {[["💵 Cash",s.cashDepart,"#00C896"],["📱 MoMo",s.fl?(Number(s.fl.float_mtn||0)+Number(s.fl.float_moov||0)+Number(s.fl.float_celtiis||0)):null,"#9B5FDE"]].map(([lbl,val,col])=>(
+                    <div key={lbl} style={{ flex:1, background:T.card, borderRadius:10, padding:"10px 12px", border:`1px solid ${T.border}` }}>
+                      <div style={{ fontSize:10, color:T.sub, marginBottom:4 }}>{lbl}</div>
+                      <div style={{ fontSize:14, fontWeight:800, color:col }}>{val!==null?fF(val):"—"}</div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", background:T.card, borderRadius:10, padding:"10px 14px", border:`1px solid ${T.border}` }}>
+                  <span style={{ fontSize:13, color:T.sub, fontWeight:700 }}>Total départ</span>
+                  <span style={{ fontSize:18, fontWeight:900, color:T.text }}>{s.pointMatin!==null?fF(s.pointMatin):"—"}</span>
+                </div>
               </div>
+              {/* Gain du jour */}
+              <div style={{ background:"#FFB80012", border:"1px solid #FFB80030", borderRadius:16, padding:16, marginBottom:8 }}>
+                <div style={{ fontSize:10, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:8 }}>💰 GAIN DU JOUR (frais collectés)</div>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                  <span style={{ fontSize:13, color:T.sub }}>{allTxs.filter(t=>t.agent_id===ag.id&&t.type==="retrait").length} retrait(s)</span>
+                  <span style={{ fontSize:26, fontWeight:900, color:"#FFB800" }}>+{fF(s.gain)}</span>
+                </div>
+              </div>
+              {/* Point du soir */}
+              <div style={{ background:"linear-gradient(135deg,#00C89618,#00A5FF12)", border:"1px solid #00C89635", borderRadius:16, padding:16, marginBottom:s.ecart!==null?8:0 }}>
+                <div style={{ fontSize:10, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:10 }}>🌙 POINT DU SOIR PRÉVU</div>
+                <div style={{ fontSize:11, color:T.sub, marginBottom:10 }}>
+                  {fF(s.pointMatin!==null?s.pointMatin:0)} + {fF(s.gain)} frais
+                </div>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", background:T.card, borderRadius:10, padding:"12px 14px", border:"1px solid #00C89625" }}>
+                  <span style={{ fontSize:14, fontWeight:800 }}>Total clôture</span>
+                  <span style={{ fontSize:24, fontWeight:900, color:"#00C896" }}>{s.pointSoir!==null?fF(s.pointSoir):"—"}</span>
+                </div>
+              </div>
+              {/* Écart */}
+              {s.ecart!==null&&(<div style={{ background:`${s.ecart>500?"#FFB800":s.ecart<-500?"#E63946":"#00C896"}12`, border:`1px solid ${s.ecart>500?"#FFB80030":s.ecart<-500?"#E6394630":"#00C89625"}`, borderRadius:16, padding:16 }}>
+                <div style={{ fontSize:10, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:8 }}>📐 ÉCART</div>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                  <div style={{ fontSize:12, fontWeight:700, color:s.ecart>500?"#FFB800":s.ecart<-500?"#E63946":"#00C896" }}>
+                    {s.ecart>500?"⚠️ Dépôt non retiré":s.ecart<-500?"🚨 Manque détecté":"✅ Équilibré"}
+                  </div>
+                  <div style={{ fontSize:20, fontWeight:900, color:s.ecart>500?"#FFB800":s.ecart<-500?"#E63946":"#00C896" }}>
+                    {s.ecart>0?"+":""}{fF(s.ecart)}
+                  </div>
+                </div>
+              </div>)}
             </div>
+
+            {/* Unités vendues — si clôture saisie */}
+            {s.totalUnites!==null&&(<div style={{ background:"linear-gradient(135deg,#7B2FBE15,#9B5FDE10)", border:"1px solid #7B2FBE30", borderRadius:16, padding:18, marginBottom:12 }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
+                <div>
+                  <div style={{ fontSize:11, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:3 }}>📦 UNITÉS VENDUES</div>
+                  <div style={{ fontSize:11, color:T.faint }}>Calculé à partir de la clôture</div>
+                </div>
+                <div style={{ textAlign:"right" }}>
+                  <div style={{ fontSize:22, fontWeight:900, color:"#9B5FDE" }}>{fF(s.totalUnites)}</div>
+                  <div style={{ fontSize:10, color:T.faint }}>Total</div>
+                </div>
+              </div>
+              {Object.entries(s.unitesParOp).map(([op,d])=>(
+                <div key={op} style={{ marginBottom:10 }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                      <div style={{ width:28, height:28, borderRadius:8, background:`${OP_COLORS[op]}20`, border:`1px solid ${OP_COLORS[op]}40`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:9, fontWeight:900, color:OP_COLORS[op] }}>{op}</div>
+                      <span style={{ fontSize:13, fontWeight:700 }}>{op}</span>
+                    </div>
+                    <span style={{ fontSize:14, fontWeight:900, color:d.unites>0?"#9B5FDE":d.unites<0?"#E63946":"#4A5060" }}>
+                      {d.unites>0?fF(d.unites):d.unites<0?`⚠️ +${fF(Math.abs(d.unites))}`:fF(0)}
+                    </span>
+                  </div>
+                  <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:6 }}>
+                    {[["Théorique",d.theorique,"#4F8EF7"],["Réel",d.reel,OP_COLORS[op]],["Vendu",d.unites,"#9B5FDE"]].map(([lbl,val,col])=>(
+                      <div key={lbl} style={{ background:T.hero, borderRadius:8, padding:"6px 8px", textAlign:"center" }}>
+                        <div style={{ fontSize:9, color:T.faint, marginBottom:2 }}>{lbl}</div>
+                        <div style={{ fontSize:11, fontWeight:800, color:col }}>{fF(Math.abs(val))}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>)}
+
             {/* Bilan journée */}
             <div style={{ background:T.card, borderRadius:16, padding:18, border:`1px solid ${T.border}` }}>
               <div style={{ fontSize:11, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:14 }}>📋 BILAN DE JOURNÉE</div>
-              {[["CA total",fF(s.depots+s.retraits),"#00C896"],["Dépôts",`${allTxs.filter(t=>t.agent_id===ag.id&&t.type==="depot").length} op · ${fF(s.depots)}`,"#00C896"],["Retraits",`${allTxs.filter(t=>t.agent_id===ag.id&&t.type==="retrait").length} op · ${fF(s.retraits)}`,"#4F8EF7"],["Frais de retrait",fF(s.fraisRetrait),"#FFB800"]].map(([l,v,c])=>(
-                <div key={l} style={{ display:"flex", justifyContent:"space-between", padding:"8px 0", borderBottom:`1px solid ${T.border}` }}>
-                  <div style={{ fontSize:13, color:T.sub }}>{l}</div><div style={{ fontSize:14, fontWeight:800, color:c }}>{v}</div>
+              {[["Dépôts",`${allTxs.filter(t=>t.agent_id===ag.id&&t.type==="depot").length} op · ${fF(s.depots)}`,"#00C896"],["Retraits",`${allTxs.filter(t=>t.agent_id===ag.id&&t.type==="retrait").length} op · ${fF(s.retraits)}`,"#4F8EF7"],["Frais de retrait",fF(s.fraisRetrait),"#FFB800"]].map(([l,v,c])=>(
+                <div key={l} style={{ display:"flex", justifyContent:"space-between", padding:"9px 0", borderBottom:`1px solid ${T.border}` }}>
+                  <div style={{ fontSize:13, color:T.sub }}>{l}</div>
+                  <div style={{ fontSize:13, fontWeight:800, color:c }}>{v}</div>
                 </div>
               ))}
             </div>
@@ -1394,6 +1472,58 @@ export default function CashPoint() {
             <div style={{ fontWeight:900, fontSize:20 }}>{getSalutation(agent.nom)}</div>
             <div style={{ fontSize:12, color:T.sub, marginTop:3 }}>{isToday?"Tableau de bord du jour":`${new Date(selectedDate).toLocaleDateString("fr-FR",{day:"numeric",month:"long"})}`}</div>
           </div>
+
+          {/* ── POINTS POS ────────────────────────────────────────────── */}
+          {(()=>{
+            const fraisJour=agentTxs.filter(t=>t.type==="retrait").reduce((s,t)=>s+Number(t.commission),0);
+            const momoDepart=floats?(Number(floats.MTN||0)+Number(floats.MOOV||0)+Number(floats.Celtiis||0)):null;
+            const ptMatin=capitalCash!==null&&momoDepart!==null?capitalCash+momoDepart:null;
+            const ptSoir=ptMatin!==null?ptMatin+fraisJour:null; // théorique
+            if (ptMatin===null) return null;
+            // Point réel = ce qu'il y a réellement en ce moment
+            const cashAct=calcCashActuel();
+            const mtnAct=calcFloatActuel("MTN");
+            const moovAct=calcFloatActuel("MOOV");
+            const celtAct=calcFloatActuel("Celtiis");
+            const ptReel=cashAct!==null?(cashAct+(mtnAct||0)+(moovAct||0)+(celtAct||0)):null;
+            const ecart=ptReel!==null&&ptSoir!==null?ptReel-ptSoir:null;
+            const ecartColor=ecart===null?"#4A5060":Math.abs(ecart)<=500?"#00C896":ecart>0?"#FFB800":"#E63946";
+            const ecartMsg=ecart===null?null:Math.abs(ecart)<=500?"✅ Tout est correct":ecart>0?"⚠️ Dépôt client non retiré":"🚨 Vérifier — argent manquant";
+            return (<div style={{ marginBottom:14 }}>
+              {/* Ligne 1 : Point matin + Gain */}
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:10 }}>
+                <div style={{ background:T.card, borderRadius:14, padding:"14px 16px", border:`1px solid ${T.border}` }}>
+                  <div style={{ fontSize:10, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:6 }}>🌅 POINT DU MATIN</div>
+                  <div style={{ fontSize:18, fontWeight:900, color:T.text }}>{fF(ptMatin)}</div>
+                  <div style={{ fontSize:10, color:T.faint, marginTop:3 }}>Cash {fF(capitalCash)} + MoMo {fF(momoDepart)}</div>
+                </div>
+                <div style={{ background:"#FFB80012", borderRadius:14, padding:"14px 16px", border:"1px solid #FFB80030" }}>
+                  <div style={{ fontSize:10, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:6 }}>💰 GAIN DU JOUR</div>
+                  <div style={{ fontSize:18, fontWeight:900, color:"#FFB800" }}>+{fF(fraisJour)}</div>
+                  <div style={{ fontSize:10, color:T.faint, marginTop:3 }}>Frais de retrait collectés</div>
+                </div>
+              </div>
+              {/* Ligne 2 : Point soir théorique */}
+              <div style={{ background:"linear-gradient(135deg,#00C89615,#00A5FF12)", borderRadius:14, padding:"13px 16px", border:"1px solid #00C89630", display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+                <div>
+                  <div style={{ fontSize:10, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:3 }}>🌙 POINT DU SOIR PRÉVU</div>
+                  <div style={{ fontSize:11, color:T.sub }}>{fF(ptMatin)} + {fF(fraisJour)}</div>
+                </div>
+                <div style={{ fontSize:22, fontWeight:900, color:"#00C896" }}>{fF(ptSoir)}</div>
+              </div>
+              {/* Ligne 3 : Écart — diagnostic */}
+              {ecart!==null&&(<div style={{ background:`${ecartColor}12`, borderRadius:14, padding:"12px 16px", border:`1px solid ${ecartColor}30`, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                <div>
+                  <div style={{ fontSize:10, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:3 }}>📐 ÉCART</div>
+                  <div style={{ fontSize:12, color:ecartColor, fontWeight:700 }}>{ecartMsg}</div>
+                </div>
+                <div style={{ textAlign:"right" }}>
+                  <div style={{ fontSize:20, fontWeight:900, color:ecartColor }}>{ecart>0?"+":""}{fF(ecart)}</div>
+                  <div style={{ fontSize:10, color:T.faint }}>Réel − Théorique</div>
+                </div>
+              </div>)}
+            </div>);
+          })()}
 
           {/* Capital Cash */}
           {(()=>{
@@ -1460,6 +1590,53 @@ export default function CashPoint() {
               </div>);
             })}
           </div>
+
+          {/* Bouton clôture journée */}
+          {isToday && capitalCash!==null && (
+            <button onClick={()=>{ setClotureInputs({MTN:"",MOOV:"",Celtiis:""}); setClotureData(null); setShowCloture(true); }}
+              style={{ width:"100%", padding:16, borderRadius:16, background:"linear-gradient(135deg,#7B2FBE,#9B5FDE)", border:"none", color:"#fff", fontWeight:800, fontSize:14, cursor:"pointer", marginBottom:14, display:"flex", alignItems:"center", justifyContent:"center", gap:10, boxShadow:"0 4px 16px #7B2FBE40" }}>
+              <span style={{ fontSize:20 }}>🌙</span> Clôturer la journée
+            </button>
+          )}
+
+          {/* Résultats clôture si disponibles */}
+          {clotureData && (
+            <div style={{ background:"linear-gradient(135deg,#7B2FBE15,#00C89612)", borderRadius:16, padding:18, marginBottom:14, border:"1px solid #7B2FBE30" }}>
+              <div style={{ fontWeight:800, fontSize:13, marginBottom:14 }}>🌙 Bilan de clôture</div>
+              {OPS.map(op=>{
+                const d=clotureData[op];
+                if (!d) return null;
+                const unitColor=d.unites<0?"#E63946":d.unites===0?"#4A5060":"#9B5FDE";
+                return (<div key={op} style={{ marginBottom:10, paddingBottom:10, borderBottom:`1px solid #7B2FBE20` }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                      <div style={{ width:28, height:28, borderRadius:8, background:`${OP_COLORS[op]}20`, border:`1px solid ${OP_COLORS[op]}40`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:9, fontWeight:900, color:OP_COLORS[op] }}>{op}</div>
+                      <span style={{ fontSize:13, fontWeight:700 }}>{op}</span>
+                    </div>
+                    <div style={{ textAlign:"right" }}>
+                      <div style={{ fontSize:14, fontWeight:900, color:unitColor }}>
+                        {d.unites>0?"-":""}{fF(Math.abs(d.unites))} vendus
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:6 }}>
+                    {[["Théorique",d.theorique,"#4F8EF7"],["Réel",d.reel,OP_COLORS[op]],["Écart",d.ecart,d.ecart<0?"#E63946":d.ecart>0?"#FFB800":"#00C896"]].map(([lbl,val,col])=>(
+                      <div key={lbl} style={{ background:T.hero, borderRadius:8, padding:"6px 8px", textAlign:"center" }}>
+                        <div style={{ fontSize:9, color:T.faint, marginBottom:2 }}>{lbl}</div>
+                        <div style={{ fontSize:11, fontWeight:800, color:col }}>{val>=0?fF(val):`-${fF(Math.abs(val))}`}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>);
+              })}
+              <div style={{ background:"#00C89612", borderRadius:12, padding:"12px 14px", marginTop:6 }}>
+                <div style={{ fontSize:11, color:T.sub, marginBottom:4 }}>Total unités vendues</div>
+                <div style={{ fontSize:20, fontWeight:900, color:"#9B5FDE" }}>
+                  {fF(OPS.reduce((s,op)=>s+(clotureData[op]?.unites||0),0))} F
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Opérations récentes */}
           <div style={{ background:T.card, borderRadius:16, padding:16, border:`1px solid ${T.border}` }}>
@@ -1797,6 +1974,67 @@ export default function CashPoint() {
             <button onClick={()=>setConfirm(null)} style={{ flex:1, padding:14, borderRadius:12, background:T.hero, border:`1px solid ${T.border2}`, color:T.text, fontWeight:700, cursor:"pointer" }}>Annuler</button>
             <button onClick={()=>removeAgentTx(confirm)} style={{ flex:1, padding:14, borderRadius:12, background:"#E63946", border:"none", color:"#fff", fontWeight:800, cursor:"pointer" }}>Supprimer</button>
           </div>
+        </div>
+      </div>)}
+
+      {/* ══ MODAL CLÔTURE JOURNÉE ════════════════════════════════════════ */}
+      {showCloture && isAgent && (<div style={{ position:"fixed", inset:0, background:"#000D", display:"flex", alignItems:"flex-end", zIndex:500 }} onClick={()=>setShowCloture(false)}>
+        <div onClick={e=>e.stopPropagation()} style={{ background:T.card, borderRadius:"22px 22px 0 0", padding:"20px 18px 48px", width:"100%", maxHeight:"92vh", overflowY:"auto", border:`1px solid ${T.border2}` }}>
+          <div style={{ width:36, height:4, background:T.border2, borderRadius:2, margin:"0 auto 18px" }} />
+          <div style={{ fontWeight:900, fontSize:18, marginBottom:4 }}>🌙 Clôture de journée</div>
+          <div style={{ fontSize:12, color:T.sub, marginBottom:20 }}>Saisis ton solde réel sur chaque réseau pour calculer les unités vendues.</div>
+
+          {OPS.map(op=>(
+            <div key={op} style={{ marginBottom:16 }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+                <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                  <div style={{ width:30, height:30, borderRadius:8, background:`${OP_COLORS[op]}20`, border:`1px solid ${OP_COLORS[op]}40`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:9, fontWeight:900, color:OP_COLORS[op] }}>{op}</div>
+                  <div>
+                    <div style={{ fontSize:13, fontWeight:700 }}>{op}</div>
+                    <div style={{ fontSize:10, color:T.faint }}>
+                      Théorique : {floats?.[op]!==null?fF(calcFloatActuel(op)):"—"}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <input type="number" placeholder={`Solde réel ${op} ce soir`}
+                value={clotureInputs[op]}
+                onChange={e=>setClotureInputs(p=>({...p,[op]:e.target.value}))}
+                style={{ width:"100%", background:T.input, border:`1px solid ${clotureInputs[op]?OP_COLORS[op]:T.border}`, borderRadius:12, padding:"13px 16px", color:T.text, fontSize:15, fontWeight:700, outline:"none", boxSizing:"border-box" }} />
+            </div>
+          ))}
+
+          <button onClick={()=>{
+            // Calculer les unités vendues pour chaque opérateur
+            const result={};
+            OPS.forEach(op=>{
+              const theorique=calcFloatActuel(op); // ce qu'il devrait avoir
+              const reel=clotureInputs[op]!==""?Number(clotureInputs[op]):null;
+              if (theorique===null||reel===null) return;
+              const unites=theorique-reel; // positif = vendu, négatif = anomalie
+              const ecart=reel-theorique;
+              result[op]={ theorique, reel, unites, ecart };
+            });
+            setClotureData(result);
+            // Sauvegarder les soldes réels dans Supabase pour le patron
+            saveFloat({
+              agent_id: agent.id,
+              patron_id: agent.patron_id,
+              date: selectedDate,
+              cash: capitalCash||0,
+              float_mtn: floats?.MTN||null,
+              float_moov: floats?.MOOV||null,
+              float_celtiis: floats?.Celtiis||null,
+              float_mtn_reel: clotureInputs.MTN!==""?Number(clotureInputs.MTN):null,
+              float_moov_reel: clotureInputs.MOOV!==""?Number(clotureInputs.MOOV):null,
+              float_celtiis_reel: clotureInputs.Celtiis!==""?Number(clotureInputs.Celtiis):null,
+            });
+            setShowCloture(false);
+          }} disabled={OPS.every(op=>clotureInputs[op]==="")}
+            style={{ width:"100%", padding:16, borderRadius:14, background:OPS.every(op=>clotureInputs[op]==="")?T.hero:"linear-gradient(135deg,#7B2FBE,#9B5FDE)", border:"none", color:OPS.every(op=>clotureInputs[op]==="")?T.faint:"#fff", fontWeight:800, fontSize:15, cursor:"pointer", marginBottom:10, boxShadow:"0 4px 16px #7B2FBE30" }}>
+            🌙 Calculer les unités vendues
+          </button>
+          <button onClick={()=>setShowCloture(false)} style={{ width:"100%", padding:12, borderRadius:12, background:"transparent", border:`1px solid ${T.border}`, color:T.sub, fontSize:13, cursor:"pointer" }}>Annuler</button>
         </div>
       </div>)}
 
