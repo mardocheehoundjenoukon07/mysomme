@@ -1293,7 +1293,10 @@ export default function CashPoint() {
                   <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
                     <div style={{ display:"flex", alignItems:"center", gap:8 }}>
                       <div style={{ width:30, height:30, borderRadius:8, background:`${OP_COLORS[op]}18`, border:`1px solid ${OP_COLORS[op]}40`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:8, fontWeight:900, color:OP_COLORS[op] }}>{op}</div>
-                      <div style={{ fontSize:13, fontWeight:700 }}>{op}</div>
+                      <div>
+                        <div style={{ fontSize:13, fontWeight:700 }}>{op}</div>
+                        {d!==null&&<div style={{ fontSize:10, color:T.sub }}>Départ : <span style={{ color:OP_COLORS[op], fontWeight:800 }}>{fF(d)}</span></div>}
+                      </div>
                     </div>
                     {a!==null?<div style={{ fontSize:16, fontWeight:900, color:a<0?"#89c423":d>0&&a/d<0.15?"#FFB800":"#00C896" }}>{fF(a)}</div>:<div style={{ fontSize:12, color:T.faint }}>Non renseigné</div>}
                   </div>
@@ -1497,7 +1500,7 @@ export default function CashPoint() {
                     <div style={{ width:34, height:34, background:OP_BG[op], border:`1px solid ${OP_COLORS[op]}40`, borderRadius:9, display:"flex", alignItems:"center", justifyContent:"center", fontSize:9, fontWeight:900, color:OP_COLORS[op] }}>{op}</div>
                     <div>
                       <div style={{ fontSize:13, fontWeight:700 }}>{op}</div>
-                      {depart!==null?<div style={{ fontSize:10, color:T.sub }}>Départ : {fF(depart)}</div>:<div style={{ fontSize:10, color:T.faint }}>Non défini</div>}
+                      {depart!==null?<div style={{ fontSize:10, color:T.sub }}>Départ : <span style={{ color:OP_COLORS[op], fontWeight:800 }}>{fF(depart)}</span></div>:<div style={{ fontSize:10, color:T.faint }}>Non défini</div>}
                     </div>
                   </div>
                   <div style={{ textAlign:"right" }}>
