@@ -1080,7 +1080,7 @@ export default function CashPoint() {
     const gain=frais;
     const pointReel=cashActuel!==null?(cashActuel+(momoA||0)):null;
     const ecart=pointReel!==null&&pointSoir!==null?pointReel-pointSoir:null;
-    const ecartDiag=ecart===null?null:ecart>500?"⚠️ Dépôt client non retiré":ecart<-500?"🚨 Manque — vérifier remise":null;
+    const ecartDiag=ecart===null?null:ecart>500?"⚠️ Argent bloqué — client n'a pas retiré":ecart<-500?"🚨 Manquant — agent a payé sans confirmation dépôt":null;
     // ── Unités vendues (si clôture saisie) ──────────────────────────────
     const unitesParOp={};
     let totalUnites=null;
@@ -1200,9 +1200,9 @@ export default function CashPoint() {
                   <div style={{ fontSize:11, color:T.sub, marginTop:2 }}>Cash + MoMo · {agents.length} agent{agents.length>1?"s":""}</div>
                 </div>
                 <div style={{ background:"#FFB80012", borderRadius:14, padding:"14px 16px", border:"1px solid #FFB80030" }}>
-                  <div style={{ fontSize:10, color:T.sub, marginBottom:4, letterSpacing:1, fontWeight:700 }}>💰 GAIN DU JOUR</div>
+                  <div style={{ fontSize:10, color:T.sub, marginBottom:4, letterSpacing:1, fontWeight:700 }}>💰 FRAIS DE RETRAIT</div>
                   <div style={{ fontSize:20, fontWeight:900, color:"#FFB800" }}>+{fF(totalFrais)}</div>
-                  <div style={{ fontSize:11, color:T.sub, marginTop:2 }}>Frais collectés</div>
+                  <div style={{ fontSize:11, color:T.sub, marginTop:2 }}>Frais de retrait collectés</div>
                 </div>
               </div>
               {/* Point du soir */}
@@ -1218,7 +1218,7 @@ export default function CashPoint() {
                 <div>
                   <div style={{ fontSize:10, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:3 }}>📐 ÉCART GLOBAL</div>
                   <div style={{ fontSize:12, fontWeight:700, color:ecartColor }}>
-                    {Math.abs(totalEcart)<=500?"✅ Équipe à l'équilibre":totalEcart>0?"⚠️ Dépôts bloqués chez des agents":"🚨 Manque détecté dans l'équipe"}
+                    {Math.abs(totalEcart)<=500?"✅ Équipe à l'équilibre":totalEcart>0?"⚠️ Dépôts bloqués chez des agents":"🚨 Manquant — vérifier confirmation dépôt dans l'équipe"}
                     {nbAlerte>0&&<span style={{ marginLeft:6, background:`${ecartColor}25`, borderRadius:6, padding:"2px 8px", fontSize:10 }}>{nbAlerte} agent{nbAlerte>1?"s":""} concerné{nbAlerte>1?"s":""}</span>}
                   </div>
                 </div>
@@ -1266,13 +1266,13 @@ export default function CashPoint() {
                   <div style={{ fontSize:14, fontWeight:900, color:T.text }}>{s.pointMatin!==null?fF(s.pointMatin):"—"}</div>
                 </div>
                 <div style={{ background:"#FFB80010", borderRadius:10, padding:"10px 12px", border:"1px solid #FFB80020" }}>
-                  <div style={{ fontSize:10, color:T.sub, marginBottom:3 }}>💰 GAIN</div>
+                  <div style={{ fontSize:10, color:T.sub, marginBottom:3 }}>💰 FRAIS</div>
                   <div style={{ fontSize:14, fontWeight:900, color:"#FFB800" }}>+{fF(s.fraisRetrait)}</div>
                 </div>
               </div>
               {s.ecart!==null&&(<div style={{ background:`${s.ecart>500?"#FFB800":s.ecart<-500?"#E63946":"#00C896"}12`, borderRadius:10, padding:"8px 12px", border:`1px solid ${s.ecart>500?"#FFB80030":s.ecart<-500?"#E6394630":"#00C89625"}`, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                 <div style={{ fontSize:11, fontWeight:700, color:s.ecart>500?"#FFB800":s.ecart<-500?"#E63946":"#00C896" }}>
-                  {s.ecart>500?"⚠️ Dépôt bloqué":s.ecart<-500?"🚨 Manque":"✅ Équilibré"}
+                  {s.ecart>500?"⚠️ Argent bloqué":s.ecart<-500?"🚨 Manquant":"✅ Équilibré"}
                 </div>
                 <div style={{ fontSize:13, fontWeight:900, color:s.ecart>500?"#FFB800":s.ecart<-500?"#E63946":"#00C896" }}>
                   {s.ecart>0?"+":""}{fF(s.ecart)}
@@ -1347,7 +1347,7 @@ export default function CashPoint() {
               </div>
               {/* Gain du jour */}
               <div style={{ background:"#FFB80012", border:"1px solid #FFB80030", borderRadius:16, padding:16, marginBottom:8 }}>
-                <div style={{ fontSize:10, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:8 }}>💰 GAIN DU JOUR (frais collectés)</div>
+                <div style={{ fontSize:10, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:8 }}>💰 FRAIS DE RETRAIT (frais collectés)</div>
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                   <span style={{ fontSize:13, color:T.sub }}>{allTxs.filter(t=>t.agent_id===ag.id&&t.type==="retrait").length} retrait(s)</span>
                   <span style={{ fontSize:26, fontWeight:900, color:"#FFB800" }}>+{fF(s.gain)}</span>
@@ -1369,7 +1369,7 @@ export default function CashPoint() {
                 <div style={{ fontSize:10, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:8 }}>📐 ÉCART</div>
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                   <div style={{ fontSize:12, fontWeight:700, color:s.ecart>500?"#FFB800":s.ecart<-500?"#E63946":"#00C896" }}>
-                    {s.ecart>500?"⚠️ Dépôt non retiré":s.ecart<-500?"🚨 Manque détecté":"✅ Équilibré"}
+                    {s.ecart>500?"⚠️ Argent bloqué — client n'a pas retiré":s.ecart<-500?"🚨 Manquant — vérifier confirmation dépôt":"✅ Équilibré"}
                   </div>
                   <div style={{ fontSize:20, fontWeight:900, color:s.ecart>500?"#FFB800":s.ecart<-500?"#E63946":"#00C896" }}>
                     {s.ecart>0?"+":""}{fF(s.ecart)}
@@ -1488,7 +1488,7 @@ export default function CashPoint() {
             const ptReel=cashAct!==null?(cashAct+(mtnAct||0)+(moovAct||0)+(celtAct||0)):null;
             const ecart=ptReel!==null&&ptSoir!==null?ptReel-ptSoir:null;
             const ecartColor=ecart===null?"#4A5060":Math.abs(ecart)<=500?"#00C896":ecart>0?"#FFB800":"#E63946";
-            const ecartMsg=ecart===null?null:Math.abs(ecart)<=500?"✅ Tout est correct":ecart>0?"⚠️ Dépôt client non retiré":"🚨 Vérifier — argent manquant";
+            const ecartMsg=ecart===null?null:Math.abs(ecart)<=500?"✅ Tout est correct":ecart>0?"⚠️ Argent bloqué — client n'a pas retiré":"🚨 Manquant — agent a payé sans confirmation dépôt";
             return (<div style={{ marginBottom:14 }}>
               {/* Ligne 1 : Point matin + Gain */}
               <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:10 }}>
@@ -1498,7 +1498,7 @@ export default function CashPoint() {
                   <div style={{ fontSize:10, color:T.faint, marginTop:3 }}>Cash {fF(capitalCash)} + MoMo {fF(momoDepart)}</div>
                 </div>
                 <div style={{ background:"#FFB80012", borderRadius:14, padding:"14px 16px", border:"1px solid #FFB80030" }}>
-                  <div style={{ fontSize:10, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:6 }}>💰 GAIN DU JOUR</div>
+                  <div style={{ fontSize:10, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:6 }}>💰 FRAIS DE RETRAIT</div>
                   <div style={{ fontSize:18, fontWeight:900, color:"#FFB800" }}>+{fF(fraisJour)}</div>
                   <div style={{ fontSize:10, color:T.faint, marginTop:3 }}>Frais de retrait collectés</div>
                 </div>
