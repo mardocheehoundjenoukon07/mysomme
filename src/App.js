@@ -798,9 +798,9 @@ export default function CashPoint() {
   // ── CHARGEMENT DATA PATRON ──────────────────────────────────────────────────
   async function loadPatronData() {
     setLoading(true);
-    // Charger les agents d'abord pour avoir leurs IDs
+    // ✅ On ne remet PAS agents à [] — on garde l'ancienne liste visible pendant le chargement
     const ag = await fetchAgents(patron.id);
-    setAgents(ag);
+    if (ag.length > 0) setAgents(ag); // on ne vide que si on a de nouvelles données
     const agentIds = ag.map(a => a.id).filter(Boolean);
     const [txs, fls] = await Promise.all([
       fetchAllTxsForPatron(patron.id, selectedDate, agentIds),
@@ -1078,11 +1078,11 @@ export default function CashPoint() {
           {/* Liste agents */}
           <div style={{ fontSize:11, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:12 }}>MES AGENTS — {agents.length} au total</div>
           {loading && <div style={{ textAlign:"center", color:T.sub, padding:32 }}>⏳ Chargement...</div>}
-          {!loading && agents.length===0 && (<div style={{ background:T.card, borderRadius:16, padding:32, textAlign:"center", border:`1px solid ${T.border}` }}>
-            <div style={{ fontSize:32, marginBottom:12 }}>👷</div>
-            <div style={{ fontWeight:700, marginBottom:8 }}>Aucun agent encore</div>
-            <div style={{ fontSize:12, color:T.sub }}>Va dans l'onglet <strong>Agents</strong> pour générer un code d'invitation.</div>
-          </div>)}
+          {!loading && agents.length===0 && (
+            <div style={{ background:T.card, borderRadius:16, padding:24, textAlign:"center", border:`1px solid ${T.border}` }}>
+              <div style={{ fontSize:12, color:T.sub }}>Aucun agent · Va dans l'onglet <strong>Agents</strong> pour en ajouter.</div>
+            </div>
+          )}
           {agents.map(ag=>{
             const s=getAgentStats(ag.id);
             const actif=s.nbOps>0;
