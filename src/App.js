@@ -112,9 +112,9 @@ function getTranche(montant) {
 
 // ─── CONSTANTES ───────────────────────────────────────────────────────────────
 const OPS       = ["MTN","MOOV","Celtiis"];
-const OP_COLORS = { MTN:"#FFB800", MOOV:"#0066CC", Celtiis:"#E63946" };
-const OP_BG_D   = { MTN:"#FFB80018", MOOV:"#0066CC18", Celtiis:"#E6394618" };
-const OP_BG_L   = { MTN:"#FFB80028", MOOV:"#0066CC20", Celtiis:"#E6394620" };
+const OP_COLORS = { MTN:"#FFB800", MOOV:"#0066CC", Celtiis:"#89c423" };
+const OP_BG_D   = { MTN:"#FFB80018", MOOV:"#0066CC18", Celtiis:"#89c42318" };
+const OP_BG_L   = { MTN:"#FFB80028", MOOV:"#0066CC20", Celtiis:"#89c42320" };
 const TYPE_COLOR = { depot:"#00C896", retrait:"#4F8EF7" };
 const TYPE_ICON  = { depot:"↙", retrait:"↗" };
 const TYPE_LABEL = { depot:"Dépôt", retrait:"Retrait" };
@@ -340,7 +340,7 @@ function PinPad({ title, subtitle, onSubmit, T, error }) {
           <div key={i} style={{ width:20, height:20, borderRadius:"50%", background:pin.length>i?"#00C896":T.border2, border:`2px solid ${pin.length>i?"#00C896":T.border}`, transition:"all 0.15s" }} />
         ))}
       </div>
-      {error && <div style={{ background:"#E6394618", border:"1px solid #E6394640", color:"#E63946", borderRadius:10, padding:"8px 20px", fontSize:12, fontWeight:700, marginBottom:22 }}>{error}</div>}
+      {error && <div style={{ background:"#89c42318", border:"1px solid #89c42340", color:"#89c423", borderRadius:10, padding:"8px 20px", fontSize:12, fontWeight:700, marginBottom:22 }}>{error}</div>}
       <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12, width:"100%", maxWidth:288 }}>
         {[1,2,3,4,5,6,7,8,9,"",0,"⌫"].map((d,i)=>(
           <button key={i} onClick={()=>d==="⌫"?setPin(p=>p.slice(0,-1)):d!==""?add(String(d)):null}
@@ -553,7 +553,7 @@ function AuthScreen({ T, dark, setDark, onPatronLogin, onAgentLogin }) {
               {PAYS.map(p=><option key={p}>{p}</option>)}
             </select>
           </div>
-          {error && <div style={{ background:"#E6394618", border:"1px solid #E6394640", color:"#E63946", borderRadius:10, padding:"10px 14px", fontSize:12, fontWeight:700, marginBottom:14 }}>{error}</div>}
+          {error && <div style={{ background:"#89c42318", border:"1px solid #89c42340", color:"#89c423", borderRadius:10, padding:"10px 14px", fontSize:12, fontWeight:700, marginBottom:14 }}>{error}</div>}
           <button onClick={handlePatronRegister} disabled={loading} style={{ width:"100%", padding:17, borderRadius:14, background:"linear-gradient(135deg,#00C896,#00A5FF)", border:"none", color:"#fff", fontWeight:900, fontSize:16, cursor:"pointer", opacity:loading?0.7:1 }}>
             {loading?"⏳ Envoi SMS...":"Recevoir mon code SMS →"}
           </button>
@@ -569,7 +569,7 @@ function AuthScreen({ T, dark, setDark, onPatronLogin, onAgentLogin }) {
           </div>
           <input type="tel" placeholder="_ _ _ _ _ _" maxLength={6} value={form.otpCode||""} onChange={e=>setForm(f=>({...f,otpCode:e.target.value.replace(/\D/g,"").slice(0,6)}))} autoFocus
             style={{...inp,fontSize:28,fontWeight:800,textAlign:"center",letterSpacing:12,marginBottom:14,border:`2px solid ${(form.otpCode||"").length===6?"#00C896":T.border}`}} />
-          {error && <div style={{ background:"#E6394618", color:"#E63946", borderRadius:10, padding:"10px", fontSize:12, fontWeight:700, marginBottom:14, textAlign:"center" }}>{error}</div>}
+          {error && <div style={{ background:"#89c42318", color:"#89c423", borderRadius:10, padding:"10px", fontSize:12, fontWeight:700, marginBottom:14, textAlign:"center" }}>{error}</div>}
           <button onClick={handlePatronOTP} disabled={loading||(form.otpCode||"").length!==6}
             style={{ width:"100%", padding:16, borderRadius:12, background:(form.otpCode||"").length===6?"linear-gradient(135deg,#00C896,#00A5FF)":T.hero, border:"none", color:(form.otpCode||"").length===6?"#fff":T.sub, fontWeight:900, fontSize:15, cursor:"pointer" }}>
             {loading?"⏳...":"✅ Confirmer"}
@@ -590,7 +590,7 @@ function AuthScreen({ T, dark, setDark, onPatronLogin, onAgentLogin }) {
               <input type="tel" placeholder="XX XX XX XX" maxLength={8} value={form.telephone} onChange={e=>setForm(f=>({...f,telephone:e.target.value.replace(/\D/g,"").slice(0,8)}))} style={{...inp,flex:1}} autoFocus />
             </div>
           </div>
-          {error && <div style={{ background:"#E6394618", color:"#E63946", borderRadius:10, padding:"10px", fontSize:12, fontWeight:700, marginBottom:14 }}>{error}</div>}
+          {error && <div style={{ background:"#89c42318", color:"#89c423", borderRadius:10, padding:"10px", fontSize:12, fontWeight:700, marginBottom:14 }}>{error}</div>}
           <button onClick={handlePatronLogin} disabled={loading} style={{ width:"100%", padding:17, borderRadius:14, background:"linear-gradient(135deg,#00C896,#00A5FF)", border:"none", color:"#fff", fontWeight:900, fontSize:16, cursor:"pointer" }}>
             {loading?"⏳...":"Continuer →"}
           </button>
@@ -609,7 +609,7 @@ function AuthScreen({ T, dark, setDark, onPatronLogin, onAgentLogin }) {
             <input type="text" placeholder="Ex : AB12CD" maxLength={6} value={form.code} onChange={e=>setForm(f=>({...f,code:e.target.value.toUpperCase()}))} autoFocus
               style={{...inp,fontSize:24,fontWeight:800,textAlign:"center",letterSpacing:8}} />
           </div>
-          {error && <div style={{ background:"#E6394618", color:"#E63946", borderRadius:10, padding:"10px", fontSize:12, fontWeight:700, marginBottom:14, textAlign:"center" }}>{error}</div>}
+          {error && <div style={{ background:"#89c42318", color:"#89c423", borderRadius:10, padding:"10px", fontSize:12, fontWeight:700, marginBottom:14, textAlign:"center" }}>{error}</div>}
           <button onClick={handleAgentCode} disabled={loading||form.code.length!==6}
             style={{ width:"100%", padding:17, borderRadius:14, background:form.code.length===6?"linear-gradient(135deg,#00C896,#00A5FF)":T.hero, border:"none", color:form.code.length===6?"#fff":T.sub, fontWeight:900, fontSize:16, cursor:"pointer", marginBottom:10 }}>
             {loading?"⏳ Vérification...":"Valider le code →"}
@@ -639,7 +639,7 @@ function AuthScreen({ T, dark, setDark, onPatronLogin, onAgentLogin }) {
               <input type="tel" placeholder="XX XX XX XX" maxLength={8} value={form.telephone} onChange={e=>setForm(f=>({...f,telephone:e.target.value.replace(/\D/g,"").slice(0,8)}))} style={{...inp,flex:1}} />
             </div>
           </div>
-          {error && <div style={{ background:"#E6394618", color:"#E63946", borderRadius:10, padding:"10px", fontSize:12, fontWeight:700, marginBottom:14 }}>{error}</div>}
+          {error && <div style={{ background:"#89c42318", color:"#89c423", borderRadius:10, padding:"10px", fontSize:12, fontWeight:700, marginBottom:14 }}>{error}</div>}
           <button onClick={handleAgentForm} disabled={loading} style={{ width:"100%", padding:17, borderRadius:14, background:"linear-gradient(135deg,#00C896,#00A5FF)", border:"none", color:"#fff", fontWeight:900, fontSize:16, cursor:"pointer" }}>
             {loading?"⏳ Envoi SMS...":"Recevoir mon code SMS →"}
           </button>
@@ -654,7 +654,7 @@ function AuthScreen({ T, dark, setDark, onPatronLogin, onAgentLogin }) {
           </div>
           <input type="tel" placeholder="_ _ _ _ _ _" maxLength={6} value={form.otpCode||""} onChange={e=>setForm(f=>({...f,otpCode:e.target.value.replace(/\D/g,"").slice(0,6)}))} autoFocus
             style={{...inp,fontSize:28,fontWeight:800,textAlign:"center",letterSpacing:12,marginBottom:14,border:`2px solid ${(form.otpCode||"").length===6?"#00C896":T.border}`}} />
-          {error && <div style={{ background:"#E6394618", color:"#E63946", borderRadius:10, padding:"10px", fontSize:12, fontWeight:700, marginBottom:14, textAlign:"center" }}>{error}</div>}
+          {error && <div style={{ background:"#89c42318", color:"#89c423", borderRadius:10, padding:"10px", fontSize:12, fontWeight:700, marginBottom:14, textAlign:"center" }}>{error}</div>}
           <button onClick={handleAgentOTP} disabled={loading||(form.otpCode||"").length!==6}
             style={{ width:"100%", padding:16, borderRadius:12, background:(form.otpCode||"").length===6?"linear-gradient(135deg,#00C896,#00A5FF)":T.hero, border:"none", color:(form.otpCode||"").length===6?"#fff":T.sub, fontWeight:900, fontSize:15, cursor:"pointer" }}>
             {loading?"⏳...":"✅ Confirmer"}
@@ -674,7 +674,7 @@ function AuthScreen({ T, dark, setDark, onPatronLogin, onAgentLogin }) {
               <input type="tel" placeholder="XX XX XX XX" maxLength={8} value={form.telephone} onChange={e=>setForm(f=>({...f,telephone:e.target.value.replace(/\D/g,"").slice(0,8)}))} style={{...inp,flex:1}} autoFocus />
             </div>
           </div>
-          {error && <div style={{ background:"#E6394618", color:"#E63946", borderRadius:10, padding:"10px", fontSize:12, fontWeight:700, marginBottom:14 }}>{error}</div>}
+          {error && <div style={{ background:"#89c42318", color:"#89c423", borderRadius:10, padding:"10px", fontSize:12, fontWeight:700, marginBottom:14 }}>{error}</div>}
           <button onClick={handleAgentLogin} disabled={loading} style={{ width:"100%", padding:17, borderRadius:14, background:"linear-gradient(135deg,#00C896,#00A5FF)", border:"none", color:"#fff", fontWeight:900, fontSize:16, cursor:"pointer" }}>
             {loading?"⏳...":"Continuer →"}
           </button>
@@ -701,7 +701,7 @@ function AuthScreen({ T, dark, setDark, onPatronLogin, onAgentLogin }) {
               <input type="tel" placeholder="XX XX XX XX" maxLength={8} value={form.telephone} onChange={e=>setForm(f=>({...f,telephone:e.target.value.replace(/\D/g,"").slice(0,8)}))} style={{...inp,flex:1}} />
             </div>
           </div>
-          {error && <div style={{ background:"#E6394618", color:"#E63946", borderRadius:10, padding:"10px", fontSize:12, fontWeight:700, marginBottom:14 }}>{error}</div>}
+          {error && <div style={{ background:"#89c42318", color:"#89c423", borderRadius:10, padding:"10px", fontSize:12, fontWeight:700, marginBottom:14 }}>{error}</div>}
           <button onClick={async()=>{
             if (!form.nom.trim()) { setError("Entre ton nom"); return; }
             if (!form.telephone||form.telephone.length!==8) { setError("Entre les 8 chiffres"); return; }
@@ -727,7 +727,7 @@ function AuthScreen({ T, dark, setDark, onPatronLogin, onAgentLogin }) {
           </div>
           <input type="tel" placeholder="_ _ _ _ _ _" maxLength={6} value={form.otpCode||""} onChange={e=>setForm(f=>({...f,otpCode:e.target.value.replace(/\D/g,"").slice(0,6)}))} autoFocus
             style={{...inp,fontSize:28,fontWeight:800,textAlign:"center",letterSpacing:12,marginBottom:14,border:`2px solid ${(form.otpCode||"").length===6?"#FFB800":T.border}`}} />
-          {error && <div style={{ background:"#E6394618", color:"#E63946", borderRadius:10, padding:"10px", fontSize:12, fontWeight:700, marginBottom:14, textAlign:"center" }}>{error}</div>}
+          {error && <div style={{ background:"#89c42318", color:"#89c423", borderRadius:10, padding:"10px", fontSize:12, fontWeight:700, marginBottom:14, textAlign:"center" }}>{error}</div>}
           <button onClick={async()=>{
             const tel="01"+form.telephone;
             setLoading(true); setError("");
@@ -761,7 +761,7 @@ function AuthScreen({ T, dark, setDark, onPatronLogin, onAgentLogin }) {
         )}
 
         {error && !["patron","agent","patron-login","agent-login","solo"].includes(mode) && (
-          <div style={{ color:"#E63946", fontSize:12, textAlign:"center", marginTop:14, fontWeight:700, background:"#E6394612", border:"1px solid #E6394630", borderRadius:10, padding:"10px 14px" }}>{error}</div>
+          <div style={{ color:"#89c423", fontSize:12, textAlign:"center", marginTop:14, fontWeight:700, background:"#89c42312", border:"1px solid #89c42330", borderRadius:10, padding:"10px 14px" }}>{error}</div>
         )}
       </div>
     </div>
@@ -1051,8 +1051,8 @@ export default function CashPoint() {
   }
   function getFloatColor(actuel,depart) {
     if (actuel===null||!depart) return "#4A5060";
-    if (actuel<0) return "#E63946";
-    const p=actuel/depart; if (p<0.15) return "#E63946"; if (p<0.35) return "#FFB800"; return "#00C896";
+    if (actuel<0) return "#89c423";
+    const p=actuel/depart; if (p<0.15) return "#89c423"; if (p<0.35) return "#FFB800"; return "#00C896";
   }
   function getFloatLabel(actuel,depart) {
     if (actuel===null) return null;
@@ -1122,7 +1122,7 @@ export default function CashPoint() {
       </div>)}
 
       {/* FLASH ERREUR — montre le vrai message Supabase */}
-      {flashErr && (<div style={{ position:"fixed", top:20, left:"50%", transform:"translateX(-50%)", background:"#E63946", color:"#fff", borderRadius:14, padding:"12px 20px", fontWeight:700, fontSize:12, zIndex:9999, boxShadow:"0 4px 24px #0009", maxWidth:"90vw", textAlign:"center" }}>
+      {flashErr && (<div style={{ position:"fixed", top:20, left:"50%", transform:"translateX(-50%)", background:"#89c423", color:"#fff", borderRadius:14, padding:"12px 20px", fontWeight:700, fontSize:12, zIndex:9999, boxShadow:"0 4px 24px #0009", maxWidth:"90vw", textAlign:"center" }}>
         ❌ Erreur sync : {flashErr}
       </div>)}
 
@@ -1230,7 +1230,7 @@ export default function CashPoint() {
           {agents.map(ag=>{
             const s=getAgentStats(ag.id);
             const actif=s.nbOps>0;
-            const cashColor=s.cashActuel===null?T.sub:s.cashActuel<0?"#E63946":s.cashActuel/(s.cashDepart||1)<0.2?"#FFB800":"#00C896";
+            const cashColor=s.cashActuel===null?T.sub:s.cashActuel<0?"#89c423":s.cashActuel/(s.cashDepart||1)<0.2?"#FFB800":"#00C896";
             return (<div key={ag.id} onClick={()=>setSelectedAgent(ag)} style={{ background:T.card, borderRadius:16, padding:16, marginBottom:10, border:`1px solid ${T.border}`, borderLeft:`2px solid ${actif?"#00C896":"#4A5060"}`, cursor:"pointer" }}>
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
                 <div>
@@ -1261,7 +1261,7 @@ export default function CashPoint() {
         {/* ══════════════ DETAIL AGENT (PATRON) ═════════════════════════ */}
         {isPatron && tab==="dashboard" && selectedAgent && (()=>{
           const ag=selectedAgent; const s=getAgentStats(ag.id);
-          const cashColor=s.cashActuel===null?T.sub:s.cashActuel<0?"#E63946":s.cashActuel/(s.cashDepart||1)<0.2?"#FFB800":"#00C896";
+          const cashColor=s.cashActuel===null?T.sub:s.cashActuel<0?"#89c423":s.cashActuel/(s.cashDepart||1)<0.2?"#FFB800":"#00C896";
           return (<div>
             <button onClick={()=>setSelectedAgent(null)} style={{ background:T.card, border:`1px solid ${T.border}`, borderRadius:10, padding:"8px 16px", color:T.text, fontSize:13, fontWeight:700, cursor:"pointer", marginBottom:20 }}>← Retour</button>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
@@ -1281,7 +1281,7 @@ export default function CashPoint() {
                 </div>
                 <div style={{ display:"flex", gap:8 }}>
                   <div style={{ flex:1, background:"#00C89610", border:"1px solid #00C89625", borderRadius:8, padding:"6px 10px", fontSize:11 }}><span style={{ color:T.sub }}>⬇️ </span><span style={{ color:"#00C896", fontWeight:800 }}>+{fF(s.depots)}</span></div>
-                  <div style={{ flex:1, background:"#E6394610", border:"1px solid #E6394625", borderRadius:8, padding:"6px 10px", fontSize:11 }}><span style={{ color:T.sub }}>⬆️ </span><span style={{ color:"#E63946", fontWeight:800 }}>-{fF(s.retraits)}</span></div>
+                  <div style={{ flex:1, background:"#89c42310", border:"1px solid #89c42325", borderRadius:8, padding:"6px 10px", fontSize:11 }}><span style={{ color:T.sub }}>⬆️ </span><span style={{ color:"#89c423", fontWeight:800 }}>-{fF(s.retraits)}</span></div>
                 </div>
               </>)}
             </div>
@@ -1295,7 +1295,7 @@ export default function CashPoint() {
                       <div style={{ width:30, height:30, borderRadius:8, background:`${OP_COLORS[op]}18`, border:`1px solid ${OP_COLORS[op]}40`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:8, fontWeight:900, color:OP_COLORS[op] }}>{op}</div>
                       <div style={{ fontSize:13, fontWeight:700 }}>{op}</div>
                     </div>
-                    {a!==null?<div style={{ fontSize:16, fontWeight:900, color:a<0?"#E63946":d>0&&a/d<0.15?"#FFB800":"#00C896" }}>{fF(a)}</div>:<div style={{ fontSize:12, color:T.faint }}>Non renseigné</div>}
+                    {a!==null?<div style={{ fontSize:16, fontWeight:900, color:a<0?"#89c423":d>0&&a/d<0.15?"#FFB800":"#00C896" }}>{fF(a)}</div>:<div style={{ fontSize:12, color:T.faint }}>Non renseigné</div>}
                   </div>
                   {d!==null&&d>0&&<div style={{ height:2, background:T.faint, borderRadius:1, overflow:"hidden" }}><div style={{ height:"100%", width:`${Math.max(0,Math.min(100,a/d*100))}%`, background:OP_COLORS[op], borderRadius:1 }} /></div>}
                 </div>
@@ -1342,35 +1342,19 @@ export default function CashPoint() {
 
             {/* Unités vendues — si clôture saisie */}
             {s.totalUnites!==null&&(<div style={{ background:"linear-gradient(135deg,#7B2FBE15,#9B5FDE10)", border:"1px solid #7B2FBE30", borderRadius:16, padding:18, marginBottom:12 }}>
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
-                <div>
-                  <div style={{ fontSize:11, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:3 }}>📦 UNITÉS VENDUES</div>
-                  <div style={{ fontSize:11, color:T.faint }}>Calculé à partir de la clôture</div>
-                </div>
-                <div style={{ textAlign:"right" }}>
-                  <div style={{ fontSize:22, fontWeight:900, color:"#9B5FDE" }}>{fF(s.totalUnites)}</div>
-                  <div style={{ fontSize:10, color:T.faint }}>Total</div>
-                </div>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
+                <div style={{ fontSize:11, color:T.sub, fontWeight:700, letterSpacing:1 }}>📦 UNITÉS VENDUES</div>
+                <div style={{ fontSize:20, fontWeight:900, color:"#9B5FDE" }}>{fF(s.totalUnites)}</div>
               </div>
-              {Object.entries(s.unitesParOp).map(([op,d])=>(
-                <div key={op} style={{ marginBottom:10 }}>
-                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
-                    <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                      <div style={{ width:28, height:28, borderRadius:8, background:`${OP_COLORS[op]}20`, border:`1px solid ${OP_COLORS[op]}40`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:9, fontWeight:900, color:OP_COLORS[op] }}>{op}</div>
-                      <span style={{ fontSize:13, fontWeight:700 }}>{op}</span>
-                    </div>
-                    <span style={{ fontSize:14, fontWeight:900, color:d.unites>0?"#9B5FDE":d.unites<0?"#E63946":"#4A5060" }}>
-                      {d.unites>0?fF(d.unites):d.unites<0?`⚠️ +${fF(Math.abs(d.unites))}`:fF(0)}
-                    </span>
+              {Object.entries(s.unitesParOp).map(([op,d],i,arr)=>(
+                <div key={op} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"9px 0", borderBottom:i<arr.length-1?`1px solid #7B2FBE20`:"none" }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                    <div style={{ width:26, height:26, borderRadius:7, background:`${OP_COLORS[op]}20`, border:`1px solid ${OP_COLORS[op]}40`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:8, fontWeight:900, color:OP_COLORS[op] }}>{op}</div>
+                    <span style={{ fontSize:13, fontWeight:700 }}>{op}</span>
                   </div>
-                  <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:6 }}>
-                    {[["Théorique",d.theorique,"#4F8EF7"],["Réel",d.reel,OP_COLORS[op]],["Vendu",d.unites,"#9B5FDE"]].map(([lbl,val,col])=>(
-                      <div key={lbl} style={{ background:T.hero, borderRadius:8, padding:"6px 8px", textAlign:"center" }}>
-                        <div style={{ fontSize:9, color:T.faint, marginBottom:2 }}>{lbl}</div>
-                        <div style={{ fontSize:11, fontWeight:800, color:col }}>{fF(Math.abs(val))}</div>
-                      </div>
-                    ))}
-                  </div>
+                  <span style={{ fontSize:15, fontWeight:900, color:d.unites>0?"#9B5FDE":d.unites<0?"#89c423":"#4A5060" }}>
+                    {d.unites>0?fF(d.unites):d.unites<0?`⚠️ +${fF(Math.abs(d.unites))}`:"—"}
+                  </span>
                 </div>
               ))}
             </div>)}
@@ -1420,7 +1404,7 @@ export default function CashPoint() {
               <div style={{ display:"flex", alignItems:"center", gap:8 }}>
                 <div style={{ background:"#00C89618", borderRadius:8, padding:"4px 10px", fontSize:11, fontWeight:700, color:"#00C896" }}>Actif</div>
                 <button onClick={()=>setConfirmDelAgent(ag)}
-                  style={{ background:"#E6394618", border:"1px solid #E6394640", borderRadius:8, padding:"6px 10px", color:"#E63946", fontSize:13, cursor:"pointer", fontWeight:700 }}>
+                  style={{ background:"#89c42318", border:"1px solid #89c42340", borderRadius:8, padding:"6px 10px", color:"#89c423", fontSize:13, cursor:"pointer", fontWeight:700 }}>
                   🗑️
                 </button>
               </div>
@@ -1471,7 +1455,7 @@ export default function CashPoint() {
           {(()=>{
             const cashActuel=calcCashActuel();
             const cashPct=capitalCash>0&&cashActuel!==null?Math.max(0,Math.min(100,cashActuel/capitalCash*100)):0;
-            const cashColor=cashActuel===null?T.sub:cashActuel<0?"#E63946":cashActuel/(capitalCash||1)<0.2?"#FFB800":"#00C896";
+            const cashColor=cashActuel===null?T.sub:cashActuel<0?"#89c423":cashActuel/(capitalCash||1)<0.2?"#FFB800":"#00C896";
             const depT=agentTxs.filter(t=>t.type==="depot").reduce((s,t)=>s+Number(t.montant),0);
             const retT=agentTxs.filter(t=>t.type==="retrait").reduce((s,t)=>s+Number(t.montant),0);
             return (<div style={{ background:T.card, borderRadius:16, padding:18, marginBottom:14, border:"1px solid #00C89630" }}>
@@ -1487,9 +1471,9 @@ export default function CashPoint() {
                 <div style={{ height:2, background:T.faint, borderRadius:1, overflow:"hidden", marginBottom:10 }}><div style={{ height:"100%", width:`${cashPct}%`, background:cashColor, borderRadius:1, transition:"width 0.4s" }} /></div>
                 <div style={{ display:"flex", gap:8 }}>
                   {depT>0&&<div style={{ flex:1, background:"#00C89610", border:"1px solid #00C89625", borderRadius:8, padding:"6px 10px", fontSize:11 }}><span style={{ color:T.sub }}>⬇️ </span><span style={{ color:"#00C896", fontWeight:800 }}>+{fF(depT)}</span></div>}
-                  {retT>0&&<div style={{ flex:1, background:"#E6394610", border:"1px solid #E6394625", borderRadius:8, padding:"6px 10px", fontSize:11 }}><span style={{ color:T.sub }}>⬆️ </span><span style={{ color:"#E63946", fontWeight:800 }}>-{fF(retT)}</span></div>}
+                  {retT>0&&<div style={{ flex:1, background:"#89c42310", border:"1px solid #89c42325", borderRadius:8, padding:"6px 10px", fontSize:11 }}><span style={{ color:T.sub }}>⬆️ </span><span style={{ color:"#89c423", fontWeight:800 }}>-{fF(retT)}</span></div>}
                 </div>
-                {cashActuel<0&&<div style={{ marginTop:8, background:"#E6394620", border:"1px solid #E6394650", borderRadius:8, padding:"6px 12px", fontSize:11, color:"#E63946", fontWeight:800 }}>🚨 Cash insuffisant ! Manque {fF(Math.abs(cashActuel))}</div>}
+                {cashActuel<0&&<div style={{ marginTop:8, background:"#89c42320", border:"1px solid #89c42350", borderRadius:8, padding:"6px 12px", fontSize:11, color:"#89c423", fontWeight:800 }}>🚨 Cash insuffisant ! Manque {fF(Math.abs(cashActuel))}</div>}
                 {cashActuel>=0&&capitalCash>0&&cashActuel/capitalCash<0.2&&<div style={{ marginTop:8, background:"#FFB80015", border:"1px solid #FFB80035", borderRadius:8, padding:"6px 12px", fontSize:11, color:"#FFB800", fontWeight:700 }}>⚠️ Cash faible — pense à te réapprovisionner</div>}
               </>)}
             </div>);
@@ -1524,11 +1508,11 @@ export default function CashPoint() {
                 </div>
                 {depart!==null&&actuel!==null&&<div style={{ height:2, background:T.faint, borderRadius:1, overflow:"hidden", marginBottom:6 }}><div style={{ height:"100%", width:`${pct}%`, background:OP_COLORS[op], borderRadius:1 }} /></div>}
                 {depart!==null&&(depO>0||retO>0)&&<div style={{ display:"flex", gap:6, marginTop:4 }}>
-                  {depO>0&&<div style={{ flex:1, background:"#E6394610", border:"1px solid #E6394620", borderRadius:7, padding:"4px 8px", fontSize:10 }}><span style={{ color:T.sub }}>⬇️ </span><span style={{ color:"#E63946", fontWeight:700 }}>-{fF(depO)}</span></div>}
+                  {depO>0&&<div style={{ flex:1, background:"#89c42310", border:"1px solid #89c42320", borderRadius:7, padding:"4px 8px", fontSize:10 }}><span style={{ color:T.sub }}>⬇️ </span><span style={{ color:"#89c423", fontWeight:700 }}>-{fF(depO)}</span></div>}
                   {retO>0&&<div style={{ flex:1, background:"#00C89610", border:"1px solid #00C89620", borderRadius:7, padding:"4px 8px", fontSize:10 }}><span style={{ color:T.sub }}>⬆️ </span><span style={{ color:"#00C896", fontWeight:700 }}>+{fF(retO)}</span></div>}
                 </div>}
-                {actuel!==null&&actuel<5000&&actuel>=0&&<div style={{ marginTop:6, background:"#E6394612", border:"1px solid #E6394635", borderRadius:7, padding:"5px 10px", fontSize:10, color:"#E63946", fontWeight:700 }}>⚠️ Solde {op} bas !</div>}
-                {actuel!==null&&actuel<0&&<div style={{ marginTop:6, background:"#E6394620", border:"1px solid #E6394650", borderRadius:7, padding:"5px 10px", fontSize:10, color:"#E63946", fontWeight:800 }}>🚨 Dépassé de {fF(Math.abs(actuel))} !</div>}
+                {actuel!==null&&actuel<5000&&actuel>=0&&<div style={{ marginTop:6, background:"#89c42312", border:"1px solid #89c42335", borderRadius:7, padding:"5px 10px", fontSize:10, color:"#89c423", fontWeight:700 }}>⚠️ Solde {op} bas !</div>}
+                {actuel!==null&&actuel<0&&<div style={{ marginTop:6, background:"#89c42320", border:"1px solid #89c42350", borderRadius:7, padding:"5px 10px", fontSize:10, color:"#89c423", fontWeight:800 }}>🚨 Dépassé de {fF(Math.abs(actuel))} !</div>}
               </div>);
             })}
           </div>
@@ -1552,7 +1536,7 @@ export default function CashPoint() {
               {/* Résumé total */}
               {clotureData.ptAttendu&&(()=>{
                 const diff=clotureData.totalSaisi-clotureData.ptAttendu;
-                const dc=Math.abs(diff)<=500?"#00C896":diff>0?"#FFB800":"#E63946";
+                const dc=Math.abs(diff)<=500?"#00C896":diff>0?"#FFB800":"#89c423";
                 return (<div style={{ background:`${dc}12`, borderRadius:12, padding:"12px 14px", marginBottom:14, border:`1px solid ${dc}30`, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                   <div>
                     <div style={{ fontSize:12, fontWeight:700, color:dc }}>
@@ -1569,31 +1553,22 @@ export default function CashPoint() {
               {OPS.map((op,i)=>{
                 const d=clotureData[op];
                 if (!d) return null;
-                const unitColor=d.unites<0?"#E63946":d.unites===0?"#4A5060":"#9B5FDE";
-                return (<div key={op} style={{ marginBottom:i<OPS.length-1?12:0, paddingBottom:i<OPS.length-1?12:0, borderBottom:i<OPS.length-1?`1px solid #7B2FBE20`:"none" }}>
-                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
+                const unitColor=d.unites<0?"#89c423":d.unites===0?"#4A5060":"#9B5FDE";
+                return (
+                  <div key={op} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 0", borderBottom:i<OPS.length-1?`1px solid #7B2FBE20`:"none" }}>
                     <div style={{ display:"flex", alignItems:"center", gap:8 }}>
                       <div style={{ width:28, height:28, borderRadius:8, background:`${OP_COLORS[op]}20`, border:`1px solid ${OP_COLORS[op]}40`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:9, fontWeight:900, color:OP_COLORS[op] }}>{op}</div>
                       <span style={{ fontSize:13, fontWeight:700 }}>{op}</span>
                     </div>
-                    <div style={{ fontSize:15, fontWeight:900, color:unitColor }}>
-                      {d.unites>0?fF(d.unites):d.unites<0?`⚠️ +${fF(Math.abs(d.unites))}`:"0 F"}
+                    <div style={{ fontSize:16, fontWeight:900, color:unitColor }}>
+                      {d.unites>0?fF(d.unites):d.unites<0?`⚠️ +${fF(Math.abs(d.unites))}`:"—"}
                     </div>
                   </div>
-                  <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:6 }}>
-                    {[["Théorique",d.theorique,"#4F8EF7"],["Réel soir",d.reel,OP_COLORS[op]],["Vendus",Math.max(0,d.unites),unitColor]].map(([lbl,val,col])=>(
-                      <div key={lbl} style={{ background:T.hero, borderRadius:8, padding:"6px 8px", textAlign:"center" }}>
-                        <div style={{ fontSize:9, color:T.faint, marginBottom:2 }}>{lbl}</div>
-                        <div style={{ fontSize:11, fontWeight:800, color:col }}>{fF(val)}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>);
+                );
               })}
-
               {/* Total */}
-              <div style={{ background:"#9B5FDE18", borderRadius:12, padding:"12px 14px", marginTop:14, border:"1px solid #9B5FDE30", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                <div style={{ fontSize:12, fontWeight:700, color:"#9B5FDE" }}>Total unités vendues</div>
+              <div style={{ background:"#9B5FDE18", borderRadius:12, padding:"12px 14px", marginTop:12, border:"1px solid #9B5FDE30", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                <div style={{ fontSize:12, fontWeight:700, color:"#9B5FDE" }}>Total vendus</div>
                 <div style={{ fontSize:20, fontWeight:900, color:"#9B5FDE" }}>
                   {fF(OPS.reduce((s,op)=>s+Math.max(0,clotureData[op]?.unites||0),0))}
                 </div>
@@ -1741,7 +1716,7 @@ export default function CashPoint() {
             <div><div style={{ fontWeight:700, fontSize:13 }}>{dark?"Mode sombre":"Mode clair"}</div><div style={{ fontSize:11, color:T.sub }}>Changer l'apparence</div></div>
             <button onClick={()=>setDark(d=>!d)} style={{ padding:"8px 16px", borderRadius:10, background:T.hero, border:`1px solid ${T.border}`, color:T.text, fontSize:13, fontWeight:700, cursor:"pointer" }}>{dark?"☀️":"🌙"}</button>
           </div>
-          <button onClick={()=>setConfirmLogout(true)} style={{ width:"100%", padding:16, borderRadius:14, background:"#E6394618", border:"1px solid #E6394640", color:"#E63946", fontWeight:800, fontSize:15, cursor:"pointer" }}>🔓 Se déconnecter</button>
+          <button onClick={()=>setConfirmLogout(true)} style={{ width:"100%", padding:16, borderRadius:14, background:"#89c42318", border:"1px solid #89c42340", color:"#89c423", fontWeight:800, fontSize:15, cursor:"pointer" }}>🔓 Se déconnecter</button>
         </div>)}
 
       </main>
@@ -1874,7 +1849,7 @@ export default function CashPoint() {
             {cashActuel!==null&&(<div style={{ marginBottom:12 }}>
               <div style={{ fontWeight:900, fontSize:13, color:"#00C896", borderBottom:"1px solid #00C89630", paddingBottom:6, marginBottom:10 }}>💵 CAISSE</div>
               <div style={{ display:"flex", justifyContent:"space-between", padding:"6px 0", fontSize:13, borderBottom:"1px solid #eee" }}><span>Départ</span><strong>{fF(capitalCash)}</strong></div>
-              <div style={{ display:"flex", justifyContent:"space-between", padding:"6px 0", fontSize:13 }}><span>Maintenant</span><strong style={{color:cashActuel<0?"#E63946":"#00C896"}}>{fF(cashActuel)}</strong></div>
+              <div style={{ display:"flex", justifyContent:"space-between", padding:"6px 0", fontSize:13 }}><span>Maintenant</span><strong style={{color:cashActuel<0?"#89c423":"#00C896"}}>{fF(cashActuel)}</strong></div>
             </div>)}
             <div style={{ marginTop:12, fontSize:11, color:"#aaa", textAlign:"center", marginBottom:12 }}>Généré par CashPoint · {new Date().toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}</div>
             <button onClick={()=>{
@@ -1935,7 +1910,7 @@ export default function CashPoint() {
           <div style={{ fontSize:13, color:T.sub, marginBottom:22 }}>Cette opération sera effacée définitivement.</div>
           <div style={{ display:"flex", gap:10 }}>
             <button onClick={()=>setConfirm(null)} style={{ flex:1, padding:14, borderRadius:12, background:T.hero, border:`1px solid ${T.border2}`, color:T.text, fontWeight:700, cursor:"pointer" }}>Annuler</button>
-            <button onClick={()=>removeAgentTx(confirm)} style={{ flex:1, padding:14, borderRadius:12, background:"#E63946", border:"none", color:"#fff", fontWeight:800, cursor:"pointer" }}>Supprimer</button>
+            <button onClick={()=>removeAgentTx(confirm)} style={{ flex:1, padding:14, borderRadius:12, background:"#89c423", border:"none", color:"#fff", fontWeight:800, cursor:"pointer" }}>Supprimer</button>
           </div>
         </div>
       </div>)}
@@ -2001,7 +1976,7 @@ export default function CashPoint() {
             const totalSaisi=(clotureInputs.cash!==""?Number(clotureInputs.cash):0)+
               OPS.reduce((s,op)=>s+(clotureInputs[op]!==""?Number(clotureInputs[op]):0),0);
             const diff=ptAttendu!==null?totalSaisi-ptAttendu:null;
-            const diffColor=diff===null?"#4A5060":Math.abs(diff)<=500?"#00C896":diff>0?"#FFB800":"#E63946";
+            const diffColor=diff===null?"#4A5060":Math.abs(diff)<=500?"#00C896":diff>0?"#FFB800":"#89c423";
             const diffMsg=diff===null?null:Math.abs(diff)<=500?"✅ Équilibré":diff>0?"⚠️ Excédent (client n'a pas retiré)":"🚨 Manquant (vérifier confirmations)";
             return (<div style={{ background:`${diffColor}12`, borderRadius:12, padding:"12px 14px", marginBottom:16, border:`1px solid ${diffColor}30` }}>
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:4 }}>
@@ -2049,15 +2024,15 @@ export default function CashPoint() {
 
       {/* ══ CONFIRM SUPPRESSION AGENT (PATRON) ═══════════════════════════ */}
       {confirmDelAgent && (<div style={{ position:"fixed", inset:0, background:"#000D", display:"flex", alignItems:"center", justifyContent:"center", zIndex:500, padding:24 }}>
-        <div style={{ background:T.card, borderRadius:22, padding:28, width:"100%", maxWidth:340, border:"1px solid #E6394640", textAlign:"center" }}>
+        <div style={{ background:T.card, borderRadius:22, padding:28, width:"100%", maxWidth:340, border:"1px solid #89c42340", textAlign:"center" }}>
           <div style={{ fontSize:40, marginBottom:12 }}>⚠️</div>
-          <div style={{ fontSize:18, fontWeight:900, marginBottom:8, color:"#E63946" }}>Supprimer cet agent ?</div>
+          <div style={{ fontSize:18, fontWeight:900, marginBottom:8, color:"#89c423" }}>Supprimer cet agent ?</div>
           <div style={{ background:T.hero, borderRadius:12, padding:"12px 16px", marginBottom:16, fontSize:13 }}>
             <strong>{confirmDelAgent.nom}</strong><br/>
             <span style={{ color:T.sub, fontSize:12 }}>+229 {confirmDelAgent.telephone}</span>
           </div>
           <div style={{ fontSize:12, color:T.sub, marginBottom:22, lineHeight:1.6 }}>
-            Toutes ses opérations et données seront <strong style={{color:"#E63946"}}>définitivement supprimées</strong>.
+            Toutes ses opérations et données seront <strong style={{color:"#89c423"}}>définitivement supprimées</strong>.
           </div>
           <div style={{ display:"flex", gap:10 }}>
             <button onClick={()=>setConfirmDelAgent(null)} disabled={deletingAgent}
@@ -2068,7 +2043,7 @@ export default function CashPoint() {
               setDeletingAgent(false);
               setConfirmDelAgent(null);
               loadPatronData();
-            }} style={{ flex:1, padding:14, borderRadius:12, background:"#E63946", border:"none", color:"#fff", fontWeight:800, cursor:deletingAgent?"not-allowed":"pointer", opacity:deletingAgent?0.7:1 }}>
+            }} style={{ flex:1, padding:14, borderRadius:12, background:"#89c423", border:"none", color:"#fff", fontWeight:800, cursor:deletingAgent?"not-allowed":"pointer", opacity:deletingAgent?0.7:1 }}>
               {deletingAgent?"⏳ Suppression...":"Supprimer"}
             </button>
           </div>
@@ -2112,7 +2087,7 @@ export default function CashPoint() {
           <div style={{ fontSize:13, color:T.sub, marginBottom:26 }}>Tes données restent sauvegardées.</div>
           <div style={{ display:"flex", gap:10 }}>
             <button onClick={()=>setConfirmLogout(false)} style={{ flex:1, padding:14, borderRadius:12, background:T.hero, border:`1px solid ${T.border2}`, color:T.text, fontWeight:700, cursor:"pointer" }}>Annuler</button>
-            <button onClick={handleLogout} style={{ flex:1, padding:14, borderRadius:12, background:"#E63946", border:"none", color:"#fff", fontWeight:800, cursor:"pointer" }}>Déconnexion</button>
+            <button onClick={handleLogout} style={{ flex:1, padding:14, borderRadius:12, background:"#89c423", border:"none", color:"#fff", fontWeight:800, cursor:"pointer" }}>Déconnexion</button>
           </div>
         </div>
       </div>)}
@@ -2180,7 +2155,7 @@ export default function CashPoint() {
           </div>
           <div style={{ borderTop:`1px solid ${T.border}`, paddingTop:16, marginBottom:16 }}>
             <div style={{ fontSize:11, fontWeight:800, letterSpacing:1, color:"#9B5FDE", marginBottom:14 }}>📱 SOLDES ÉLECTRONIQUES MOMO</div>
-            {[["MTN","#FFB800"],["MOOV","#0066CC"],["Celtiis","#E63946"]].map(([op,col])=>(
+            {[["MTN","#FFB800"],["MOOV","#0066CC"],["Celtiis","#89c423"]].map(([op,col])=>(
               <div key={op} style={{ marginBottom:12 }}>
                 <div style={{ fontSize:12, fontWeight:800, color:col, marginBottom:6 }}>{op}</div>
                 <input type="number" placeholder={`Solde ${op} du matin`} value={morningInputs[op]} onChange={e=>setMorningInputs(p=>({...p,[op]:e.target.value}))}
