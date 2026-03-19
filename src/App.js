@@ -1595,6 +1595,7 @@ export default function CashPoint() {
             {saving?"⏳ Sauvegarde…":"Enregistrer ✓"}
           </button>
         </div>
+        </div>
       </div>)}
 
       {/* ══ MODAL RAPPORT AGENT ═════════════════════════════════════════ */}
