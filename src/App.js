@@ -974,7 +974,7 @@ export default function CashPoint() {
     if (!form.operateur||!form.montant) return;
     setSaving(true);
     const uid=agent.id||agent.telephone;
-    const com=(modal==="retrait"&&!retraitDist)?calcFrais(form.operateur,Number(form.montant)):0;
+    const com=(modal==="retrait")?calcFrais(form.operateur,Number(form.montant)):0;
     const localId=Date.now();
     const tx={
       agent_id:agent.id,
@@ -1558,31 +1558,43 @@ export default function CashPoint() {
                 </div>
               ))}
               {/* Abonnement */}
-              <div style={{ marginTop:16, background: agents.length>0?"#00C89610":"#FFB80010", border:`1px solid ${agents.length>0?"#00C89630":"#FFB80030"}`, borderRadius:12, padding:"14px 16px" }}>
-                <div style={{ fontSize:11, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:8 }}>ABONNEMENT</div>
-                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+              <div style={{ marginTop:16, background:agents.length>0?"#00C89610":"#FFB80010", border:`1px solid ${agents.length>0?"#00C89630":"#FFB80030"}`, borderRadius:14, padding:"16px" }}>
+                <div style={{ fontSize:10, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:10 }}>💳 ABONNEMENT MENSUEL</div>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
                   <div>
-                    <div style={{ fontSize:13, fontWeight:700 }}>{agents.length} agent{agents.length>1?"s":""} actif{agents.length>1?"s":""}</div>
-                    <div style={{ fontSize:11, color:T.sub, marginTop:2 }}>1 999 F × {agents.length} agent{agents.length>1?"s":""}</div>
+                    <div style={{ fontSize:14, fontWeight:800 }}>{agents.length} agent{agents.length>1?"s":""}</div>
+                    <div style={{ fontSize:11, color:T.sub, marginTop:2 }}>1 999 F × {agents.length} = <strong style={{ color:agents.length>0?"#00C896":"#FFB800" }}>{(1999*agents.length).toLocaleString("fr-FR")} F</strong>/mois</div>
                   </div>
-                  <div style={{ textAlign:"right" }}>
-                    <div style={{ fontSize:20, fontWeight:900, color: agents.length>0?"#00C896":"#FFB800" }}>{(1999*agents.length).toLocaleString("fr-FR")} F</div>
-                    <div style={{ fontSize:10, color:T.sub }}>/ mois</div>
-                  </div>
+                  <div style={{ fontSize:28, fontWeight:900, color:agents.length>0?"#00C896":"#FFB800" }}>{(1999*agents.length).toLocaleString("fr-FR")} F</div>
                 </div>
-                {agents.length===0 && <div style={{ fontSize:11, color:"#FFB800", marginTop:8 }}>Aucun agent — ajoutez votre premier agent</div>}
+                <button onClick={()=>alert("Paiement bientôt disponible — FedaPay")}
+                  style={{ width:"100%", padding:"13px 0", borderRadius:12, background:agents.length>0?"linear-gradient(135deg,#00C896,#00A5FF)":"linear-gradient(135deg,#FFB800,#E09000)", border:"none", color:"#fff", fontWeight:800, fontSize:14, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:8, boxShadow:agents.length>0?"0 4px 16px #00C89640":"0 4px 16px #FFB80040" }}>
+                  💳 Payer l'abonnement
+                </button>
+                {agents.length===0 && <div style={{ fontSize:11, color:"#FFB800", marginTop:10, textAlign:"center" }}>Ajoutez des agents pour activer l'abonnement</div>}
               </div>
             </>)}
             {isAgent&&(<>
               <div style={{ fontSize:11, color:T.sub, marginBottom:12, fontWeight:700 }}>COMPTE AGENT</div>
-              {[["👷 Nom",agent.nom],["📞 Téléphone",agent.telephone]].map(([l,v])=>(
+              {[["👤 Nom",agent.nom],["📞 Téléphone",agent.telephone]].map(([l,v])=>(
                 <div key={l} style={{ display:"flex", justifyContent:"space-between", padding:"10px 0", borderBottom:`1px solid ${T.border}` }}>
                   <span style={{ fontSize:13, color:T.sub }}>{l}</span><span style={{ fontSize:13, fontWeight:700 }}>{v}</span>
                 </div>
               ))}
-              <div style={{ marginTop:12 }}>
-                {pendingCount>0?<div style={{ background:"#FFB80018", border:"1px solid #FFB80040", borderRadius:10, padding:"10px 14px", fontSize:12, color:"#FFB800", fontWeight:700 }}>⚡ {pendingCount} opération(s) en attente de sync</div>:<div style={{ background:"#00C89618", border:"1px solid #00C89630", borderRadius:10, padding:"10px 14px", fontSize:12, color:"#00C896", fontWeight:700 }}>✅ Toutes les données synchronisées</div>}
+              <div style={{ marginTop:12, marginBottom:4 }}>
+                {pendingCount>0
+                  ?<div style={{ background:"#FFB80018", border:"1px solid #FFB80040", borderRadius:10, padding:"10px 14px", fontSize:12, color:"#FFB800", fontWeight:700 }}>⚡ {pendingCount} opération(s) en attente de sync</div>
+                  :<div style={{ background:"#00C89618", border:"1px solid #00C89630", borderRadius:10, padding:"10px 14px", fontSize:12, color:"#00C896", fontWeight:700 }}>✅ Toutes les données synchronisées</div>}
               </div>
+              {/* Abonnement agent solo (sans patron) */}
+              {!agent.patron_id && (<div style={{ marginTop:14, background:"#7B2FBE12", border:"1px solid #7B2FBE35", borderRadius:14, padding:"16px" }}>
+                <div style={{ fontSize:10, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:8 }}>💳 MON ABONNEMENT</div>
+                <div style={{ fontSize:11, color:T.sub, marginBottom:12 }}>Agent indépendant · <strong style={{ color:"#9B5FDE" }}>1 999 F / mois</strong></div>
+                <button onClick={()=>alert("Paiement bientôt disponible — FedaPay")}
+                  style={{ width:"100%", padding:"13px 0", borderRadius:12, background:"linear-gradient(135deg,#7B2FBE,#9B5FDE)", border:"none", color:"#fff", fontWeight:800, fontSize:14, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:8, boxShadow:"0 4px 16px #7B2FBE40" }}>
+                  💳 Payer mon abonnement
+                </button>
+              </div>)}
             </>)}
           </div>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", background:T.card, borderRadius:14, padding:"14px 16px", marginBottom:14, border:`1px solid ${T.border}` }}>
@@ -1609,12 +1621,15 @@ export default function CashPoint() {
       </div>)}
 
       {/* ══ BOTTOM NAV ══════════════════════════════════════════════════ */}
-      <nav style={{ position:"fixed", bottom:0, left:0, right:0, background:T.nav, borderTop:`1px solid ${T.border}`, zIndex:50 }}>
-        <div style={{ display:"flex", justifyContent:"space-around", padding:"8px 0 12px", maxWidth:520, margin:"0 auto" }}>
+      <nav style={{ position:"fixed", bottom:0, left:0, right:0, background:T.nav, borderTop:`1px solid ${T.border}`, zIndex:50, backdropFilter:"blur(12px)" }}>
+        <div style={{ display:"flex", justifyContent:"space-around", padding:"10px 0 16px", maxWidth:520, margin:"0 auto" }}>
           {(isPatron?NAV_PATRON:NAV_AGENT).map(([key,icon,label])=>(
-            <button key={key} onClick={()=>{ setTab(key); if(key==="dashboard") setSelectedAgent(null); }} style={{ background:"none", border:"none", color:tab===key?"#00C896":T.faint, fontSize:10, fontWeight:tab===key?800:500, cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", gap:3, padding:"0 16px" }}>
-              <span style={{ fontSize:22 }}>{icon}</span>{label}
-              {tab===key&&<div style={{ width:4, height:4, borderRadius:"50%", background:"#00C896" }} />}
+            <button key={key} onClick={()=>{ setTab(key); if(key==="dashboard") setSelectedAgent(null); }}
+              style={{ background:"none", border:"none", color:tab===key?"#00C896":T.sub, fontSize:11, fontWeight:tab===key?800:500, cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", gap:4, padding:"0 20px", opacity:tab===key?1:0.65, transition:"all 0.15s" }}>
+              <div style={{ width:42, height:32, borderRadius:16, background:tab===key?"#00C89618":"transparent", display:"flex", alignItems:"center", justifyContent:"center", transition:"all 0.15s" }}>
+                <span style={{ fontSize:18, lineHeight:1 }}>{icon}</span>
+              </div>
+              <span style={{ letterSpacing:0.3 }}>{label}</span>
             </button>
           ))}
         </div>
@@ -1627,25 +1642,19 @@ export default function CashPoint() {
           <div style={{ fontWeight:900, fontSize:18, marginBottom:16 }}>{modal==="depot"?"⬇️ Nouveau Dépôt":"⬆️ Nouveau Retrait"}</div>
 
           {modal==="retrait" && (<>
-            <div style={{ display:"flex", gap:8, marginBottom:14 }}>
-              {[["normal","✅ Normal",false],["distance","📡 À distance",true]].map(([k,lbl,val])=>(
-                <button key={k} onClick={()=>setRetraitDist(val)} style={{ flex:1, padding:"10px 0", borderRadius:12, border:`2px solid ${retraitDist===val?(val?"#FFB800":"#00C896"):T.border}`, background:retraitDist===val?(val?"#FFB80020":"#00C89620"):"transparent", color:retraitDist===val?(val?"#FFB800":"#00C896"):T.sub, fontWeight:800, fontSize:13, cursor:"pointer" }}>{lbl}</button>
-              ))}
-            </div>
-            {retraitDist&&<div style={{ background:"#FFB80015", border:"1px solid #FFB80040", borderRadius:10, padding:"9px 14px", fontSize:12, color:"#FFB800", fontWeight:700, marginBottom:12 }}>📡 Frais de retrait = 0 F pour toi</div>}
             {form.montant&&Number(form.montant)>=100&&(()=>{
               const t=getTranche(form.montant);
               const c=form.operateur?calcFrais(form.operateur,form.montant):0;
-              return t?(<div style={{ background:"#4F8EF712", border:"1px solid #4F8EF735", borderRadius:14, padding:"14px 16px", marginBottom:14 }}>
-                <div style={{ fontSize:11, color:"#4F8EF7", fontWeight:700, marginBottom:10 }}>TRANCHE : {Number(t.min).toLocaleString("fr-FR")} – {Number(t.max).toLocaleString("fr-FR")} F</div>
+              return t?(<div style={{ background:T.hero, border:`1px solid ${T.border}`, borderRadius:14, padding:"14px 16px", marginBottom:14 }}>
+                <div style={{ fontSize:10, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:10 }}>TRANCHE : {Number(t.min).toLocaleString("fr-FR")} – {Number(t.max).toLocaleString("fr-FR")} F</div>
                 <div style={{ display:"flex", gap:8 }}>
-                  {OPS.map(op=>{ const sel=op===form.operateur; return (<div key={op} style={{ flex:1, textAlign:"center", background:sel?`${OP_COLORS[op]}20`:T.hero, border:`2px solid ${sel?OP_COLORS[op]:T.border}`, borderRadius:11, padding:"10px 4px" }}>
+                  {OPS.map(op=>{ const sel=op===form.operateur; return (<div key={op} style={{ flex:1, textAlign:"center", background:sel?`${OP_COLORS[op]}20`:T.card, border:`1px solid ${sel?OP_COLORS[op]:T.border}`, borderRadius:10, padding:"10px 4px" }}>
                     <div style={{ fontSize:10, color:OP_COLORS[op], fontWeight:800, marginBottom:4 }}>{op}</div>
-                    <div style={{ fontSize:15, fontWeight:900, color:sel?OP_COLORS[op]:T.text }}>{fF(t[op])}</div>
+                    <div style={{ fontSize:14, fontWeight:900, color:sel?OP_COLORS[op]:T.text }}>{fF(t[op])}</div>
                   </div>); })}
                 </div>
-                {form.operateur&&!retraitDist&&<div style={{ marginTop:10, background:"#00C89618", border:"1px solid #00C89630", borderRadius:10, padding:"10px 14px", display:"flex", justifyContent:"space-between" }}>
-                  <span style={{ fontSize:12, color:T.sub }}>💰 Frais de retrait</span>
+                {form.operateur&&<div style={{ marginTop:10, background:"#00C89612", border:"1px solid #00C89625", borderRadius:10, padding:"10px 14px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                  <span style={{ fontSize:12, color:T.sub }}>💰 Frais appliqués</span>
                   <span style={{ fontSize:18, fontWeight:900, color:"#00C896" }}>{fF(c)}</span>
                 </div>}
               </div>):null;
@@ -1672,8 +1681,22 @@ export default function CashPoint() {
             </div>
           </div>
           <button onClick={addTx} disabled={saving||!form.operateur||!form.montant}
-            style={{ width:"100%", padding:17, borderRadius:14, background:(!form.operateur||!form.montant)?T.hero:modal==="depot"?"#00C896":"#4F8EF7", border:"none", color:(!form.operateur||!form.montant)?T.sub:"#fff", fontWeight:900, fontSize:16, cursor:"pointer" }}>
-            {saving?"⏳ Sauvegarde…":"Enregistrer ✓"}
+            style={{ width:"100%", padding:18, borderRadius:16,
+              background:(!form.operateur||!form.montant)?"transparent":
+                modal==="depot"?"linear-gradient(135deg,#00C896,#00A5FF)":
+                "linear-gradient(135deg,#4F8EF7,#7B2FBE)",
+              border:(!form.operateur||!form.montant)?`1px solid ${T.border}`:"none",
+              color:(!form.operateur||!form.montant)?T.faint:"#fff",
+              fontWeight:900, fontSize:16, cursor:(!form.operateur||!form.montant)?"not-allowed":"pointer",
+              display:"flex", alignItems:"center", justifyContent:"center", gap:10,
+              boxShadow:(!form.operateur||!form.montant)?"none":modal==="depot"?"0 4px 18px #00C89640":"0 4px 18px #4F8EF750",
+              transition:"all 0.2s" }}>
+            {saving
+              ? <><span style={{ fontSize:16 }}>⏳</span> Enregistrement…</>
+              : modal==="depot"
+              ? <><span style={{ fontSize:18, fontWeight:300 }}>↙</span> Confirmer le dépôt</>
+              : <><span style={{ fontSize:18, fontWeight:300 }}>↗</span> Confirmer le retrait {form.operateur&&form.montant?`· frais ${fF(calcFrais(form.operateur,form.montant))}`:""}</>
+            }
           </button>
         </div>
       </div>)}
