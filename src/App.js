@@ -162,27 +162,27 @@ async function savePatron(p) {
 }
 async function fetchAgents(patronId) {
   try {
-    const r=await fetch(`${SUPA_URL}/rest/v1/kashio_agents?patron_id=eq.${patronId}&select=*&order=created_at.asc`,{headers:H()});
+    const r=await fetch(`${SUPA_URL}/rest/v1/cashpoint_agents?patron_id=eq.${patronId}&select=*&order=created_at.asc`,{headers:H()});
     return r.ok?await r.json():[];
   } catch { return []; }
 }
 async function fetchAgent(tel) {
   try {
-    const r=await fetch(`${SUPA_URL}/rest/v1/kashio_agents?telephone=eq.${tel}&select=*`,{headers:H()});
+    const r=await fetch(`${SUPA_URL}/rest/v1/cashpoint_agents?telephone=eq.${tel}&select=*`,{headers:H()});
     if (!r.ok) return null; const d=await r.json(); return d[0]||null;
   } catch { return null; }
 }
 async function saveAgent(a) {
   try {
-    const r=await fetch(`${SUPA_URL}/rest/v1/kashio_agents`,{method:"POST",headers:H(),body:JSON.stringify(a)});
+    const r=await fetch(`${SUPA_URL}/rest/v1/cashpoint_agents`,{method:"POST",headers:H(),body:JSON.stringify(a)});
     return r.ok?(await r.json())[0]:null;
   } catch { return null; }
 }
 async function deleteAgent(agentId) {
   try {
-    await fetch(`${SUPA_URL}/rest/v1/kashio_transactions?agent_id=eq.${agentId}`,{method:"DELETE",headers:H()});
-    await fetch(`${SUPA_URL}/rest/v1/kashio_floats?agent_id=eq.${agentId}`,{method:"DELETE",headers:H()});
-    await fetch(`${SUPA_URL}/rest/v1/kashio_agents?id=eq.${agentId}`,{method:"DELETE",headers:H()});
+    await fetch(`${SUPA_URL}/rest/v1/cashpoint_transactions?agent_id=eq.${agentId}`,{method:"DELETE",headers:H()});
+    await fetch(`${SUPA_URL}/rest/v1/cashpoint_floats?agent_id=eq.${agentId}`,{method:"DELETE",headers:H()});
+    await fetch(`${SUPA_URL}/rest/v1/cashpoint_agents?id=eq.${agentId}`,{method:"DELETE",headers:H()});
     return true;
   } catch { return false; }
 }
@@ -209,7 +209,7 @@ async function markInviteUsed(code, agentId) {
 // Transactions agent
 async function fetchAgentTxs(agentId, dateStr) {
   try {
-    const r=await fetch(`${SUPA_URL}/rest/v1/kashio_transactions?agent_id=eq.${agentId}&created_at=gte.${dateStr}T00:00:00+01:00&created_at=lte.${dateStr}T23:59:59+01:00&order=created_at.desc`,{headers:H()});
+    const r=await fetch(`${SUPA_URL}/rest/v1/cashpoint_transactions?agent_id=eq.${agentId}&created_at=gte.${dateStr}T00:00:00+01:00&created_at=lte.${dateStr}T23:59:59+01:00&order=created_at.desc`,{headers:H()});
     return r.ok?await r.json():[];
   } catch { return []; }
 }
@@ -217,19 +217,19 @@ async function saveTx(tx) {
   try {
     // ⚠️ Retirer les champs locaux non connus de Supabase
     const { localId, id, ...cleanTx } = tx;
-    const r=await fetch(`${SUPA_URL}/rest/v1/kashio_transactions`,{method:"POST",headers:H(),body:JSON.stringify(cleanTx)});
+    const r=await fetch(`${SUPA_URL}/rest/v1/cashpoint_transactions`,{method:"POST",headers:H(),body:JSON.stringify(cleanTx)});
     if (r.ok) return { ok:true, data:(await r.json())[0] };
     const err=await r.json().catch(()=>({}));
     return { ok:false, error: err.message||err.details||err.hint||`Erreur ${r.status}` };
   } catch(e) { return { ok:false, error:e.message||"Pas de connexion" }; }
 }
 async function deleteTx(id) {
-  try { await fetch(`${SUPA_URL}/rest/v1/kashio_transactions?id=eq.${id}`,{method:"DELETE",headers:H()}); } catch {}
+  try { await fetch(`${SUPA_URL}/rest/v1/cashpoint_transactions?id=eq.${id}`,{method:"DELETE",headers:H()}); } catch {}
 }
 // Float agent
 async function fetchFloat(agentId, date) {
   try {
-    const r=await fetch(`${SUPA_URL}/rest/v1/kashio_floats?agent_id=eq.${agentId}&date=eq.${date}&select=*`,{headers:H()});
+    const r=await fetch(`${SUPA_URL}/rest/v1/cashpoint_floats?agent_id=eq.${agentId}&date=eq.${date}&select=*`,{headers:H()});
     if (!r.ok) return null; const d=await r.json(); return d[0]||null;
   } catch { return null; }
 }
@@ -238,7 +238,7 @@ async function saveFloat(f) {
     // Garder seulement les colonnes connues de Supabase
     const { agent_id, patron_id, date, cash, float_mtn, float_moov, float_celtiis, float_mtn_reel, float_moov_reel, float_celtiis_reel } = f;
     const cleanFloat = { agent_id, patron_id, date, cash, float_mtn, float_moov, float_celtiis, float_mtn_reel, float_moov_reel, float_celtiis_reel };
-    const r=await fetch(`${SUPA_URL}/rest/v1/kashio_floats`,{
+    const r=await fetch(`${SUPA_URL}/rest/v1/cashpoint_floats`,{
       method:"POST",
       headers:{...H(),"Prefer":"return=representation,resolution=merge-duplicates"},
       body:JSON.stringify(cleanFloat)
@@ -261,7 +261,7 @@ async function fetchAllTxsForPatron(patronId, dateStr, agentIds) {
     if (agentIds && agentIds.length > 0) {
       const ids = agentIds.join(",");
       const r = await fetch(
-        `${SUPA_URL}/rest/v1/kashio_transactions?agent_id=in.(${ids})&created_at=gte.${dateStr}&created_at=lt.${nextDay}&order=created_at.desc`,
+        `${SUPA_URL}/rest/v1/cashpoint_transactions?agent_id=in.(${ids})&created_at=gte.${dateStr}&created_at=lt.${nextDay}&order=created_at.desc`,
         { headers: H() }
       );
       if (r.ok) {
@@ -272,7 +272,7 @@ async function fetchAllTxsForPatron(patronId, dateStr, agentIds) {
     }
     // Fallback par patron_id
     const r = await fetch(
-      `${SUPA_URL}/rest/v1/kashio_transactions?patron_id=eq.${patronId}&created_at=gte.${dateStr}&created_at=lt.${nextDay}&order=created_at.desc`,
+      `${SUPA_URL}/rest/v1/cashpoint_transactions?patron_id=eq.${patronId}&created_at=gte.${dateStr}&created_at=lt.${nextDay}&order=created_at.desc`,
       { headers: H() }
     );
     if (r.ok) {
@@ -289,7 +289,7 @@ async function fetchAllFloatsForPatron(patronId, dateStr, agentIds) {
     if (agentIds && agentIds.length > 0) {
       const ids = agentIds.join(",");
       const r = await fetch(
-        `${SUPA_URL}/rest/v1/kashio_floats?agent_id=in.(${ids})&date=eq.${dateStr}&select=*`,
+        `${SUPA_URL}/rest/v1/cashpoint_floats?agent_id=in.(${ids})&date=eq.${dateStr}&select=*`,
         { headers: H() }
       );
       if (r.ok) {
@@ -299,7 +299,7 @@ async function fetchAllFloatsForPatron(patronId, dateStr, agentIds) {
       }
     }
     const r = await fetch(
-      `${SUPA_URL}/rest/v1/kashio_floats?patron_id=eq.${patronId}&date=eq.${dateStr}&select=*`,
+      `${SUPA_URL}/rest/v1/cashpoint_floats?patron_id=eq.${patronId}&date=eq.${dateStr}&select=*`,
       { headers: H() }
     );
     if (r.ok) {
@@ -1157,26 +1157,28 @@ export default function Kashio() {
 
         {/* ══════════════ DASHBOARD PATRON ══════════════════════════════ */}
         {isPatron && tab==="dashboard" && !selectedAgent && (<div>
+
+          {/* Header salutation + actions */}
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
             <div>
-              <div style={{ fontWeight:900, fontSize:20 }}>{getSalutation(patron.nom)}</div>
-              <div style={{ fontSize:11, color:T.sub, marginTop:2 }}>{todayStr()===selectedDate?"Tableau de bord du jour":"Données du "+new Date(selectedDate).toLocaleDateString("fr-FR",{day:"numeric",month:"long"})}</div>
+              <div style={{ fontWeight:900, fontSize:22 }}>{getSalutation(patron.nom)}</div>
+              <div style={{ fontSize:11, color:T.sub, marginTop:2 }}>
+                {todayStr()===selectedDate?"Aujourd'hui":"Données du "+new Date(selectedDate).toLocaleDateString("fr-FR",{day:"numeric",month:"long"})}
+              </div>
             </div>
             <div style={{ display:"flex", gap:8 }}>
-              <button onClick={()=>setShowCal(true)} style={{ background:T.card, border:`1px solid ${T.border}`, borderRadius:10, padding:"8px 12px", color:T.text, fontSize:16, cursor:"pointer" }}>📅</button>
+              <button onClick={()=>setShowCal(true)} style={{ background:T.card, border:`1px solid ${T.border}`, borderRadius:10, padding:"8px 12px", fontSize:16, cursor:"pointer" }}>📅</button>
               <button onClick={loadPatronData} style={{ background:T.card, border:`1px solid ${T.border}`, borderRadius:10, padding:"8px 12px", color:T.sub, fontSize:16, cursor:"pointer" }}>🔄</button>
             </div>
           </div>
 
           {/* Bandeau date passée */}
-          {!isToday && (
-            <div style={{ background:"#4F8EF720", border:"1px solid #4F8EF740", borderRadius:12, padding:"10px 16px", marginBottom:16, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-              <div style={{ fontSize:13, fontWeight:700, color:"#4F8EF7" }}>📅 {new Date(selectedDate).toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</div>
-              <button onClick={()=>setSelectedDate(todayStr())} style={{ background:"#4F8EF7", border:"none", borderRadius:8, padding:"5px 14px", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer" }}>Aujourd'hui</button>
-            </div>
-          )}
+          {!isToday&&(<div style={{ background:"#4F8EF720", border:"1px solid #4F8EF740", borderRadius:12, padding:"10px 16px", marginBottom:16, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+            <div style={{ fontSize:13, fontWeight:700, color:"#4F8EF7" }}>📅 {new Date(selectedDate).toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"})}</div>
+            <button onClick={()=>setSelectedDate(todayStr())} style={{ background:"#4F8EF7", border:"none", borderRadius:8, padding:"5px 14px", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer" }}>Aujourd'hui</button>
+          </div>)}
 
-          {/* Résumé global POS */}
+          {/* Grand chiffre — Point du soir équipe */}
           {(()=>{
             const totalFrais=allTxs.filter(t=>t.type==="retrait").reduce((s,t)=>s+Number(t.commission),0);
             const agentStats=agents.map(ag=>getAgentStats(ag.id));
@@ -1184,81 +1186,66 @@ export default function Kashio() {
             const totalSoir=totalMatin+totalFrais;
             const totalUnites=agentStats.reduce((s,st)=>s+(st.totalUnites||0),0);
             const nbClotures=agentStats.filter(st=>st.totalUnites!==null).length;
-            return (<div style={{ marginBottom:20 }}>
-              {/* Ligne 1 : Point matin + Gain */}
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:10 }}>
-                <div style={{ background:T.card, borderRadius:14, padding:"14px 16px", border:`1px solid ${T.border}` }}>
-                  <div style={{ fontSize:10, color:T.sub, marginBottom:4, letterSpacing:1, fontWeight:700 }}>🌅 POINT DU MATIN</div>
-                  <div style={{ fontSize:20, fontWeight:900, color:T.text }}>{fF(totalMatin)}</div>
-                  <div style={{ fontSize:11, color:T.sub, marginTop:2 }}>Cash + MoMo · {agents.length} agent{agents.length>1?"s":""}</div>
-                </div>
-                <div style={{ background:"#FFB80012", borderRadius:14, padding:"14px 16px", border:"1px solid #FFB80030" }}>
-                  <div style={{ fontSize:10, color:T.sub, marginBottom:4, letterSpacing:1, fontWeight:700 }}>💰 FRAIS DE RETRAIT</div>
-                  <div style={{ fontSize:20, fontWeight:900, color:"#FFB800" }}>+{fF(totalFrais)}</div>
-                  <div style={{ fontSize:11, color:T.sub, marginTop:2 }}>Frais de retrait collectés</div>
-                </div>
+            return (<>
+              <div style={{ background:T.card, borderRadius:22, padding:"24px 20px 20px", marginBottom:16, border:`1px solid ${T.border}`, textAlign:"center" }}>
+                {totalMatin>0?(<>
+                  <div style={{ fontSize:11, color:T.sub, fontWeight:700, letterSpacing:1.5, marginBottom:10 }}>POINT DU SOIR — ÉQUIPE</div>
+                  <div style={{ fontSize:42, fontWeight:900, color:"#00C896", lineHeight:1, marginBottom:10 }}>{fF(totalSoir)}</div>
+                  <div style={{ display:"flex", justifyContent:"center", gap:20 }}>
+                    <div style={{ textAlign:"center" }}>
+                      <div style={{ fontSize:10, color:T.faint }}>Matin</div>
+                      <div style={{ fontSize:13, fontWeight:700, color:T.sub }}>{fF(totalMatin)}</div>
+                    </div>
+                    <div style={{ width:1, background:T.border }}/>
+                    <div style={{ textAlign:"center" }}>
+                      <div style={{ fontSize:10, color:T.faint }}>Frais</div>
+                      <div style={{ fontSize:13, fontWeight:700, color:"#FFB800" }}>+{fF(totalFrais)}</div>
+                    </div>
+                    {nbClotures>0&&<><div style={{ width:1, background:T.border }}/>
+                    <div style={{ textAlign:"center" }}>
+                      <div style={{ fontSize:10, color:T.faint }}>Unités</div>
+                      <div style={{ fontSize:13, fontWeight:700, color:"#9B5FDE" }}>{fF(totalUnites)}</div>
+                    </div></>}
+                  </div>
+                </>):(
+                  <div style={{ color:T.faint, fontSize:13, padding:"10px 0" }}>
+                    {loading?"Chargement...":"En attente des soldes de départ"}
+                  </div>
+                )}
               </div>
-              {/* Point du soir */}
-              <div style={{ background:"linear-gradient(135deg,#00C89615,#00A5FF12)", borderRadius:14, padding:"13px 16px", border:"1px solid #00C89630", display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
-                <div>
-                  <div style={{ fontSize:10, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:3 }}>🌙 POINT DU SOIR PRÉVU</div>
-                  <div style={{ fontSize:11, color:T.sub }}>{fF(totalMatin)} + {fF(totalFrais)}</div>
-                </div>
-                <div style={{ fontSize:24, fontWeight:900, color:"#00C896" }}>{fF(totalSoir)}</div>
-              </div>
-              {/* Écart global */}
-
-              {/* Unités vendues total équipe */}
-              {nbClotures>0&&(<div style={{ background:"#7B2FBE12", borderRadius:14, padding:"12px 16px", border:"1px solid #7B2FBE30", display:"flex", justifyContent:"space-between", alignItems:"center", marginTop:10 }}>
-                <div>
-                  <div style={{ fontSize:10, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:3 }}>📦 UNITÉS VENDUES</div>
-                  <div style={{ fontSize:11, color:T.faint }}>{nbClotures} agent{nbClotures>1?"s":""} avec clôture</div>
-                </div>
-                <div style={{ fontSize:20, fontWeight:900, color:"#9B5FDE" }}>{fF(totalUnites)}</div>
-              </div>)}
-            </div>);
+            </>);
           })()}
 
-          {/* Liste agents */}
-          <div style={{ fontSize:11, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:12 }}>MES AGENTS — {agents.length} au total</div>
-          {loading && <div style={{ textAlign:"center", color:T.sub, padding:32 }}>⏳ Chargement...</div>}
-          {!loading && agents.length===0 && (
+          {/* Liste agents — cartes ultra-simples */}
+          {loading&&<div style={{ textAlign:"center", color:T.sub, padding:24 }}>⏳</div>}
+          {!loading&&agents.length===0&&(
             <div style={{ background:T.card, borderRadius:16, padding:24, textAlign:"center", border:`1px solid ${T.border}` }}>
-              <div style={{ fontSize:12, color:T.sub }}>Aucun agent · Va dans l'onglet <strong>Agents</strong> pour en ajouter.</div>
+              <div style={{ fontSize:12, color:T.sub }}>Aucun agent · Va dans <strong>Agents</strong> pour en ajouter.</div>
             </div>
           )}
           {agents.map(ag=>{
             const s=getAgentStats(ag.id);
             const actif=s.nbOps>0;
-            const cashColor=s.cashActuel===null?T.sub:s.cashActuel<0?"#89c423":s.cashActuel/(s.cashDepart||1)<0.2?"#FFB800":"#00C896";
-            return (<div key={ag.id} onClick={()=>setSelectedAgent(ag)} style={{ background:T.card, borderRadius:16, padding:16, marginBottom:10, border:`1px solid ${T.border}`, borderLeft:`2px solid ${actif?"#00C896":"#4A5060"}`, cursor:"pointer" }}>
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
-                <div>
-                  <div style={{ fontWeight:800, fontSize:15 }}>👷 {ag.nom}</div>
-                  <div style={{ fontSize:11, color:T.sub, marginTop:2 }}>{actif?`🕐 Dernière op : ${s.lastOp}`:"Aucune opération aujourd'hui"}</div>
-                </div>
-                <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                  <div style={{ background:actif?"#00C89618":"#4A506020", borderRadius:8, padding:"4px 10px", fontSize:11, fontWeight:700, color:actif?"#00C896":T.sub }}>{actif?"🟢 Actif":"⚫ Inactif"}</div>
-                  <span style={{ color:T.sub, fontSize:16 }}>›</span>
+            return (<div key={ag.id} onClick={()=>setSelectedAgent(ag)}
+              style={{ background:T.card, borderRadius:16, padding:"14px 16px", marginBottom:10, border:`1px solid ${T.border}`, borderLeft:`3px solid ${actif?"#00C896":"#2A3040"}`, cursor:"pointer", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+              <div>
+                <div style={{ fontWeight:800, fontSize:15 }}>{ag.nom}</div>
+                <div style={{ fontSize:11, color:T.sub, marginTop:3 }}>
+                  {actif?`${s.nbOps} op · Frais +${fF(s.fraisRetrait)}`:"Aucune opération"}
                 </div>
               </div>
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:8 }}>
-                <div style={{ background:T.hero, borderRadius:10, padding:"10px 12px" }}>
-                  <div style={{ fontSize:10, color:T.sub, marginBottom:3 }}>🌅 PT MATIN</div>
-                  <div style={{ fontSize:14, fontWeight:900, color:T.text }}>{s.pointMatin!==null?fF(s.pointMatin):"—"}</div>
+              <div style={{ textAlign:"right" }}>
+                <div style={{ fontSize:18, fontWeight:900, color:actif?"#00C896":T.faint }}>
+                  {s.pointSoir!==null?fF(s.pointSoir):"—"}
                 </div>
-                <div style={{ background:"#FFB80010", borderRadius:10, padding:"10px 12px", border:"1px solid #FFB80020" }}>
-                  <div style={{ fontSize:10, color:T.sub, marginBottom:3 }}>💰 FRAIS</div>
-                  <div style={{ fontSize:14, fontWeight:900, color:"#FFB800" }}>+{fF(s.fraisRetrait)}</div>
-                </div>
+                <div style={{ fontSize:10, color:T.faint }}>Point du soir</div>
               </div>
             </div>);
           })}
 
-
         </div>)}
 
-        {/* ══════════════ DETAIL AGENT (PATRON) ═════════════════════════ */}
+                {/* ══════════════ DETAIL AGENT (PATRON) ═════════════════════════ */}
         {isPatron && tab==="dashboard" && selectedAgent && (()=>{
           const ag=selectedAgent; const s=getAgentStats(ag.id);
           const cashColor=s.cashActuel===null?T.sub:s.cashActuel<0?"#89c423":s.cashActuel/(s.cashDepart||1)<0.2?"#FFB800":"#00C896";
