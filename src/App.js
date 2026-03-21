@@ -236,8 +236,8 @@ async function fetchFloat(agentId, date) {
 async function saveFloat(f) {
   try {
     // Garder seulement les colonnes connues de Supabase
-    const { agent_id, patron_id, date, cash, float_mtn, float_moov, float_celtiis} = f;
-    const cleanFloat = { agent_id, patron_id, date, cash, float_mtn, float_moov, float_celtiis };
+    const { agent_id, patron_id, date, cash, float_mtn, float_moov, float_celtiis, float_mtn_reel, float_moov_reel, float_celtiis_reel } = f;
+    const cleanFloat = { agent_id, patron_id, date, cash, float_mtn, float_moov, float_celtiis, float_mtn_reel, float_moov_reel, float_celtiis_reel };
     const r=await fetch(`${SUPA_URL}/rest/v1/cashpoint_floats`,{
       method:"POST",
       headers:{...H(),"Prefer":"return=representation,resolution=merge-duplicates"},
@@ -818,10 +818,9 @@ export default function Kashio() {
   const [agentTxs,    setAgentTxs]    = useState([]);
   const [pendingCount,setPendingCount]= useState(0);
   const [showReport,  setShowReport]  = useState(false);
-  const [showCloture,   setShowCloture]   = useState(false);
-  const [showPoint,     setShowPoint]     = useState(true); // masquer/démasquer le point du soir
+  const [showCloture, setShowCloture] = useState(false);
   const [clotureInputs, setClotureInputs] = useState({ cash:"", MTN:"", MOOV:"", Celtiis:"" });
-  const [clotureData,   setClotureData]   = useState(null);
+  const [clotureData,   setClotureData]   = useState(null); // résultats calculés
   const [retraitDist, setRetraitDist] = useState(false);
   const [floats,      setFloats]      = useState({ MTN:null, MOOV:null, Celtiis:null });
   const [capitalCash, setCapitalCash] = useState(null);
@@ -1079,8 +1078,23 @@ export default function Kashio() {
     const pointMatin=cashDepart!==null&&momoDepart!==null?cashDepart+momoDepart:null;
     const pointSoir=pointMatin!==null?pointMatin+frais:null;  // théorique
     const gain=frais;
-        // ────────────────────────────────────────────────────────────────────
-    return { depots:deps,retraits:rets,fraisRetrait:frais,nbOps:txs.length,lastOp:txs[0]?.heure||null,cashDepart,cashActuel,mtnActuel:mtnA,moovActuel:moovA,celtiisActuel:celtA,momoActuel:momoA,pointTotal:cashActuel!==null?cashActuel+momoA:null,pointMatin,pointSoir,gain,fl };
+        // ── Unités vendues (si clôture saisie) ──────────────────────────────
+    const unitesParOp={};
+    let totalUnites=null;
+    if (fl) {
+      const reelMap={ MTN:fl.float_mtn_reel, MOOV:fl.float_moov_reel, Celtiis:fl.float_celtiis_reel };
+      const theorMap={ MTN:mtnA, MOOV:moovA, Celtiis:celtA };
+      let hasAny=false;
+      ["MTN","MOOV","Celtiis"].forEach(op=>{
+        if (reelMap[op]!==null&&reelMap[op]!==undefined&&theorMap[op]!==null) {
+          unitesParOp[op]={ theorique:theorMap[op], reel:Number(reelMap[op]), unites:theorMap[op]-Number(reelMap[op]) };
+          hasAny=true;
+        }
+      });
+      if (hasAny) totalUnites=Object.values(unitesParOp).reduce((s,v)=>s+v.unites,0);
+    }
+    // ────────────────────────────────────────────────────────────────────
+    return { depots:deps,retraits:rets,fraisRetrait:frais,nbOps:txs.length,lastOp:txs[0]?.heure||null,cashDepart,cashActuel,mtnActuel:mtnA,moovActuel:moovA,celtiisActuel:celtA,momoActuel:momoA,pointTotal:cashActuel!==null?cashActuel+momoA:null,pointMatin,pointSoir,gain,unitesParOp,totalUnites,fl };
   }
 
   // ── GARDES ──────────────────────────────────────────────────────────────────
@@ -1170,29 +1184,28 @@ export default function Kashio() {
             const agentStats=agents.map(ag=>getAgentStats(ag.id));
             const totalMatin=agentStats.reduce((s,st)=>s+(st.pointMatin||0),0);
             const totalSoir=totalMatin+totalFrais;
+            const totalUnites=agentStats.reduce((s,st)=>s+(st.totalUnites||0),0);
+            const nbClotures=agentStats.filter(st=>st.totalUnites!==null).length;
             return (<>
               <div style={{ background:T.card, borderRadius:22, padding:"24px 20px 20px", marginBottom:16, border:`1px solid ${T.border}`, textAlign:"center" }}>
                 {totalMatin>0?(<>
-                  <div style={{ display:"flex", justifyContent:"center", alignItems:"center", gap:10, marginBottom:10 }}>
-                    <div style={{ fontSize:11, color:T.sub, fontWeight:700, letterSpacing:1.5 }}>POINT DU SOIR — ÉQUIPE</div>
-                    <button onClick={()=>setShowPoint(p=>!p)}
-                      style={{ background:T.hero, border:`1px solid ${T.border}`, borderRadius:8, padding:"3px 10px", fontSize:11, color:T.sub, cursor:"pointer", fontWeight:700 }}>
-                      {showPoint?"Masquer":"Afficher"}
-                    </button>
-                  </div>
-                  <div style={{ fontSize:42, fontWeight:900, color:"#00C896", lineHeight:1, marginBottom:10, filter:showPoint?"none":"blur(12px)", transition:"filter 0.2s" }}>
-                    {fF(totalSoir)}
-                  </div>
+                  <div style={{ fontSize:11, color:T.sub, fontWeight:700, letterSpacing:1.5, marginBottom:10 }}>POINT DU SOIR — ÉQUIPE</div>
+                  <div style={{ fontSize:42, fontWeight:900, color:"#00C896", lineHeight:1, marginBottom:10 }}>{fF(totalSoir)}</div>
                   <div style={{ display:"flex", justifyContent:"center", gap:20 }}>
                     <div style={{ textAlign:"center" }}>
                       <div style={{ fontSize:10, color:T.faint }}>Matin</div>
-                      <div style={{ fontSize:13, fontWeight:700, color:T.sub }}>{showPoint?fF(totalMatin):"••••"}</div>
+                      <div style={{ fontSize:13, fontWeight:700, color:T.sub }}>{fF(totalMatin)}</div>
                     </div>
                     <div style={{ width:1, background:T.border }}/>
                     <div style={{ textAlign:"center" }}>
                       <div style={{ fontSize:10, color:T.faint }}>Frais</div>
                       <div style={{ fontSize:13, fontWeight:700, color:"#FFB800" }}>+{fF(totalFrais)}</div>
                     </div>
+                    {nbClotures>0&&<><div style={{ width:1, background:T.border }}/>
+                    <div style={{ textAlign:"center" }}>
+                      <div style={{ fontSize:10, color:T.faint }}>Unités</div>
+                      <div style={{ fontSize:13, fontWeight:700, color:"#9B5FDE" }}>{fF(totalUnites)}</div>
+                    </div></>}
                   </div>
                 </>):(
                   <div style={{ color:T.faint, fontSize:13, padding:"10px 0" }}>
@@ -1317,6 +1330,24 @@ export default function Kashio() {
               </div>
             </div>
 
+            {/* Unités vendues — si clôture saisie */}
+            {s.totalUnites!==null&&(<div style={{ background:"linear-gradient(135deg,#7B2FBE15,#9B5FDE10)", border:"1px solid #7B2FBE30", borderRadius:16, padding:18, marginBottom:12 }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
+                <div style={{ fontSize:11, color:T.sub, fontWeight:700, letterSpacing:1 }}>📦 UNITÉS VENDUES</div>
+                <div style={{ fontSize:20, fontWeight:900, color:"#9B5FDE" }}>{fF(s.totalUnites)}</div>
+              </div>
+              {Object.entries(s.unitesParOp).map(([op,d],i,arr)=>(
+                <div key={op} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"9px 0", borderBottom:i<arr.length-1?`1px solid #7B2FBE20`:"none" }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                    <div style={{ width:26, height:26, borderRadius:7, background:`${OP_COLORS[op]}20`, border:`1px solid ${OP_COLORS[op]}40`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:8, fontWeight:900, color:OP_COLORS[op] }}>{op}</div>
+                    <span style={{ fontSize:13, fontWeight:700 }}>{op}</span>
+                  </div>
+                  <span style={{ fontSize:15, fontWeight:900, color:d.unites>0?"#9B5FDE":d.unites<0?"#89c423":"#4A5060" }}>
+                    {d.unites>0?fF(d.unites):d.unites<0?`⚠️ +${fF(Math.abs(d.unites))}`:"—"}
+                  </span>
+                </div>
+              ))}
+            </div>)}
 
             {/* Bilan journée */}
             <div style={{ background:T.card, borderRadius:16, padding:18, border:`1px solid ${T.border}` }}>
@@ -1392,20 +1423,12 @@ export default function Kashio() {
             return (
               <div style={{ background:T.card, borderRadius:22, padding:"28px 20px 22px", marginBottom:16, border:`1px solid ${T.border}`, textAlign:"center" }}>
                 {ptSoir!==null ? (<>
-                  <div style={{ display:"flex", justifyContent:"center", alignItems:"center", gap:10, marginBottom:10 }}>
-                    <div style={{ fontSize:11, color:T.sub, fontWeight:700, letterSpacing:1.5 }}>POINT DU SOIR</div>
-                    <button onClick={()=>setShowPoint(p=>!p)}
-                      style={{ background:T.hero, border:`1px solid ${T.border}`, borderRadius:8, padding:"3px 10px", fontSize:11, color:T.sub, cursor:"pointer", fontWeight:700 }}>
-                      {showPoint?"Masquer":"Afficher"}
-                    </button>
-                  </div>
-                  <div style={{ fontSize:46, fontWeight:900, color:"#00C896", lineHeight:1, marginBottom:10, filter:showPoint?"none":"blur(12px)", userSelect:showPoint?"auto":"none", transition:"filter 0.2s" }}>
-                    {fF(ptSoir)}
-                  </div>
+                  <div style={{ fontSize:11, color:T.sub, fontWeight:700, letterSpacing:1.5, marginBottom:10 }}>POINT DU SOIR</div>
+                  <div style={{ fontSize:46, fontWeight:900, color:"#00C896", lineHeight:1, marginBottom:10 }}>{fF(ptSoir)}</div>
                   <div style={{ display:"flex", justifyContent:"center", gap:16 }}>
                     <div style={{ textAlign:"center" }}>
                       <div style={{ fontSize:10, color:T.faint }}>Matin</div>
-                      <div style={{ fontSize:13, fontWeight:700, color:T.sub }}>{showPoint?fF(ptMatin):"••••"}</div>
+                      <div style={{ fontSize:13, fontWeight:700, color:T.sub }}>{fF(ptMatin)}</div>
                     </div>
                     <div style={{ width:1, background:T.border, alignSelf:"stretch" }}/>
                     <div style={{ textAlign:"center" }}>
@@ -1461,7 +1484,7 @@ export default function Kashio() {
           {/* ── Clôture + résultat ──────────────────────────────────────── */}
           {isToday && capitalCash!==null && (
             <button onClick={()=>{ setClotureInputs({cash:"",MTN:"",MOOV:"",Celtiis:""}); setClotureData(null); setShowCloture(true); }}
-              style={{ width:"100%", padding:16, borderRadius:14, background:"linear-gradient(135deg,#FF6B00,#FF9500)", border:"none", color:"#fff", fontWeight:900, fontSize:15, cursor:"pointer", marginBottom:14, display:"flex", alignItems:"center", justifyContent:"center", gap:10, boxShadow:"0 4px 20px #FF6B0055" }}>
+              style={{ width:"100%", padding:14, borderRadius:14, background:T.card, border:`1px solid ${T.border}`, color:T.sub, fontWeight:700, fontSize:13, cursor:"pointer", marginBottom:14, display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
               🌙 Clôturer la journée
             </button>
           )}
@@ -1620,7 +1643,7 @@ export default function Kashio() {
             <div><div style={{ fontWeight:700, fontSize:13 }}>{dark?"Mode sombre":"Mode clair"}</div><div style={{ fontSize:11, color:T.sub }}>Changer l'apparence</div></div>
             <button onClick={()=>setDark(d=>!d)} style={{ padding:"8px 16px", borderRadius:10, background:T.hero, border:`1px solid ${T.border}`, color:T.text, fontSize:13, fontWeight:700, cursor:"pointer" }}>{dark?"☀️":"🌙"}</button>
           </div>
-          <button onClick={()=>setConfirmLogout(true)} style={{ width:"100%", padding:16, borderRadius:14, background:"linear-gradient(135deg,#E63946,#C0303A)", border:"none", color:"#fff", fontWeight:900, fontSize:15, cursor:"pointer", boxShadow:"0 4px 16px #E6394650", display:"flex", alignItems:"center", justifyContent:"center", gap:10 }}>🔴 Se déconnecter</button>
+          <button onClick={()=>setConfirmLogout(true)} style={{ width:"100%", padding:16, borderRadius:14, background:"#89c42318", border:"1px solid #89c42340", color:"#89c423", fontWeight:800, fontSize:15, cursor:"pointer" }}>🔓 Se déconnecter</button>
         </div>)}
 
       </main>
@@ -1820,6 +1843,151 @@ export default function Kashio() {
       </div>)}
 
       {/* ══ MODAL CLÔTURE JOURNÉE ════════════════════════════════════════ */}
+      {showCloture && isAgent && (<div style={{ position:"fixed", inset:0, background:"#000D", display:"flex", alignItems:"flex-end", zIndex:500 }} onClick={()=>setShowCloture(false)}>
+        <div onClick={e=>e.stopPropagation()} style={{ background:T.card, borderRadius:"22px 22px 0 0", padding:"20px 18px 48px", width:"100%", maxHeight:"92vh", overflowY:"auto", border:`1px solid ${T.border2}` }}>
+          <div style={{ width:36, height:4, background:T.border2, borderRadius:2, margin:"0 auto 18px" }} />
+          <div style={{ fontWeight:900, fontSize:18, marginBottom:4 }}>🌙 Clôture de journée</div>
+          <div style={{ fontSize:12, color:T.sub, marginBottom:6 }}>Saisis ce que tu as réellement ce soir.</div>
+
+          {/* Point du soir attendu */}
+          {(()=>{
+            const fraisJour=agentTxs.filter(t=>t.type==="retrait").reduce((s,t)=>s+Number(t.commission),0);
+            const momoD=floats?(Number(floats.MTN||0)+Number(floats.MOOV||0)+Number(floats.Celtiis||0)):0;
+            const ptMatin=capitalCash!==null?capitalCash+momoD:null;
+            const ptSoir=ptMatin!==null?ptMatin+fraisJour:null;
+            if (!ptSoir) return null;
+            return (<div style={{ background:"linear-gradient(135deg,#00C89615,#00A5FF12)", borderRadius:12, padding:"12px 14px", marginBottom:20, border:"1px solid #00C89630" }}>
+              <div style={{ fontSize:10, color:T.sub, fontWeight:700, marginBottom:4 }}>🎯 POINT DU SOIR ATTENDU</div>
+              <div style={{ fontSize:20, fontWeight:900, color:"#00C896" }}>{fF(ptSoir)}</div>
+              <div style={{ fontSize:10, color:T.faint, marginTop:2 }}>Cash + tous les comptes MoMo doivent donner ce total</div>
+            </div>);
+          })()}
+
+          {/* Cash liquide du soir */}
+          <div style={{ marginBottom:16 }}>
+            <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8 }}>
+              <div style={{ width:30, height:30, borderRadius:8, background:"#00C89620", border:"1px solid #00C89640", display:"flex", alignItems:"center", justifyContent:"center", fontSize:13 }}>💵</div>
+              <div>
+                <div style={{ fontSize:13, fontWeight:700 }}>Cash liquide</div>
+                <div style={{ fontSize:10, color:T.faint }}>Départ : {fF(capitalCash||0)}</div>
+              </div>
+            </div>
+            <input type="number" placeholder="Cash réel ce soir"
+              value={clotureInputs.cash}
+              onChange={e=>setClotureInputs(p=>({...p,cash:e.target.value}))}
+              style={{ width:"100%", background:T.input, border:`1px solid ${clotureInputs.cash?"#00C896":T.border}`, borderRadius:12, padding:"13px 16px", color:T.text, fontSize:15, fontWeight:700, outline:"none", boxSizing:"border-box" }} />
+          </div>
+
+          {/* Soldes MoMo du soir */}
+          {OPS.map(op=>(
+            <div key={op} style={{ marginBottom:16 }}>
+              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8 }}>
+                <div style={{ width:30, height:30, borderRadius:8, background:`${OP_COLORS[op]}20`, border:`1px solid ${OP_COLORS[op]}40`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:9, fontWeight:900, color:OP_COLORS[op] }}>{op}</div>
+                <div>
+                  <div style={{ fontSize:13, fontWeight:700 }}>{op}</div>
+                  <div style={{ fontSize:10, color:T.faint }}>Théorique : {floats?.[op]!==null?fF(calcFloatActuel(op)):"—"}</div>
+                </div>
+              </div>
+              <input type="number" placeholder={`Solde ${op} réel ce soir`}
+                value={clotureInputs[op]}
+                onChange={e=>setClotureInputs(p=>({...p,[op]:e.target.value}))}
+                style={{ width:"100%", background:T.input, border:`1px solid ${clotureInputs[op]?OP_COLORS[op]:T.border}`, borderRadius:12, padding:"13px 16px", color:T.text, fontSize:15, fontWeight:700, outline:"none", boxSizing:"border-box" }} />
+            </div>
+          ))}
+
+          {/* Total saisi en temps réel */}
+          {(clotureInputs.cash!==""||OPS.some(op=>clotureInputs[op]!==""))&&(()=>{
+            const fraisJour=agentTxs.filter(t=>t.type==="retrait").reduce((s,t)=>s+Number(t.commission),0);
+            const momoD=floats?(Number(floats.MTN||0)+Number(floats.MOOV||0)+Number(floats.Celtiis||0)):0;
+            const ptAttendu=capitalCash!==null?capitalCash+momoD+fraisJour:null;
+            const totalSaisi=(clotureInputs.cash!==""?Number(clotureInputs.cash):0)+
+              OPS.reduce((s,op)=>s+(clotureInputs[op]!==""?Number(clotureInputs[op]):0),0);
+            const diff=ptAttendu!==null?totalSaisi-ptAttendu:null;
+            const diffColor=diff===null?"#4A5060":Math.abs(diff)<=500?"#00C896":diff>0?"#FFB800":"#89c423";
+            const diffMsg=diff===null?null:Math.abs(diff)<=500?"✅ Équilibré":diff>0?"⚠️ Excédent (client n'a pas retiré)":"🚨 Manquant (vérifier confirmations)";
+            return (<div style={{ background:`${diffColor}12`, borderRadius:12, padding:"12px 14px", marginBottom:16, border:`1px solid ${diffColor}30` }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:4 }}>
+                <div style={{ fontSize:12, fontWeight:700, color:diffColor }}>{diffMsg||"Total saisi"}</div>
+                <div style={{ fontSize:18, fontWeight:900, color:diffColor }}>{fF(totalSaisi)}</div>
+              </div>
+              {diff!==null&&<div style={{ fontSize:10, color:T.faint }}>Attendu : {fF(ptAttendu)} · Écart : {diff>0?"+":""}{fF(diff)}</div>}
+            </div>);
+          })()}
+
+          <button onClick={()=>{
+            const fraisJour=agentTxs.filter(t=>t.type==="retrait").reduce((s,t)=>s+Number(t.commission),0);
+            const momoD=floats?(Number(floats.MTN||0)+Number(floats.MOOV||0)+Number(floats.Celtiis||0)):0;
+            const ptAttendu=capitalCash!==null?capitalCash+momoD+fraisJour:null;
+            // Calculer les unités vendues par opérateur
+            const result={ ptAttendu, totalSaisi:0 };
+            OPS.forEach(op=>{
+              const theorique=calcFloatActuel(op);
+              const reel=clotureInputs[op]!==""?Number(clotureInputs[op]):null;
+              if (theorique===null||reel===null) return;
+              const unites=theorique-reel; // positif = unités vendues
+              result[op]={ theorique, reel, unites };
+            });
+            const cashReel=clotureInputs.cash!==""?Number(clotureInputs.cash):null;
+            result.cashReel=cashReel;
+            result.totalSaisi=(cashReel||0)+OPS.reduce((s,op)=>s+(result[op]?.reel||0),0);
+            setClotureData(result);
+            // Sauvegarder dans Supabase
+            saveFloat({
+              agent_id:agent.id, patron_id:agent.patron_id, date:selectedDate,
+              cash:capitalCash||0,
+              float_mtn:floats?.MTN||null, float_moov:floats?.MOOV||null, float_celtiis:floats?.Celtiis||null,
+              float_mtn_reel:clotureInputs.MTN!==""?Number(clotureInputs.MTN):null,
+              float_moov_reel:clotureInputs.MOOV!==""?Number(clotureInputs.MOOV):null,
+              float_celtiis_reel:clotureInputs.Celtiis!==""?Number(clotureInputs.Celtiis):null,
+            });
+            setShowCloture(false);
+          }} disabled={clotureInputs.cash===""&&OPS.every(op=>clotureInputs[op]==="")}
+            style={{ width:"100%", padding:16, borderRadius:14, background:(clotureInputs.cash===""&&OPS.every(op=>clotureInputs[op]==="")?T.hero:"linear-gradient(135deg,#7B2FBE,#9B5FDE)"), border:"none", color:(clotureInputs.cash===""&&OPS.every(op=>clotureInputs[op]==="")?T.faint:"#fff"), fontWeight:800, fontSize:15, cursor:"pointer", marginBottom:10, boxShadow:"0 4px 16px #7B2FBE30" }}>
+            🌙 Valider la clôture
+          </button>
+          <button onClick={()=>setShowCloture(false)} style={{ width:"100%", padding:12, borderRadius:12, background:"transparent", border:`1px solid ${T.border}`, color:T.sub, fontSize:13, cursor:"pointer" }}>Annuler</button>
+        </div>
+      </div>)}
+
+      {/* ══ CONFIRM SUPPRESSION AGENT (PATRON) ═══════════════════════════ */}
+      {confirmDelAgent && (<div style={{ position:"fixed", inset:0, background:"#000D", display:"flex", alignItems:"center", justifyContent:"center", zIndex:500, padding:24 }}>
+        <div style={{ background:T.card, borderRadius:22, padding:28, width:"100%", maxWidth:340, border:"1px solid #89c42340", textAlign:"center" }}>
+          <div style={{ fontSize:40, marginBottom:12 }}>⚠️</div>
+          <div style={{ fontSize:18, fontWeight:900, marginBottom:8, color:"#89c423" }}>Supprimer cet agent ?</div>
+          <div style={{ background:T.hero, borderRadius:12, padding:"12px 16px", marginBottom:16, fontSize:13 }}>
+            <strong>{confirmDelAgent.nom}</strong><br/>
+            <span style={{ color:T.sub, fontSize:12 }}>+229 {confirmDelAgent.telephone}</span>
+          </div>
+          <div style={{ fontSize:12, color:T.sub, marginBottom:22, lineHeight:1.6 }}>
+            Toutes ses opérations et données seront <strong style={{color:"#89c423"}}>définitivement supprimées</strong>.
+          </div>
+          <div style={{ display:"flex", gap:10 }}>
+            <button onClick={()=>setConfirmDelAgent(null)} disabled={deletingAgent}
+              style={{ flex:1, padding:14, borderRadius:12, background:T.hero, border:`1px solid ${T.border2}`, color:T.text, fontWeight:700, cursor:"pointer" }}>Annuler</button>
+            <button disabled={deletingAgent} onClick={async()=>{
+              setDeletingAgent(true);
+              await deleteAgent(confirmDelAgent.id);
+              setDeletingAgent(false);
+              setConfirmDelAgent(null);
+              loadPatronData();
+            }} style={{ flex:1, padding:14, borderRadius:12, background:"#89c423", border:"none", color:"#fff", fontWeight:800, cursor:deletingAgent?"not-allowed":"pointer", opacity:deletingAgent?0.7:1 }}>
+              {deletingAgent?"⏳ Suppression...":"Supprimer"}
+            </button>
+          </div>
+        </div>
+      </div>)}
+
+      {/* ══ CALENDRIER PATRON ════════════════════════════════════════════ */}
+      {showCal && isPatron && (<div style={{ position:"fixed", inset:0, background:"#000C", display:"flex", alignItems:"flex-end", zIndex:300 }} onClick={()=>setShowCal(false)}>
+        <div onClick={e=>e.stopPropagation()} style={{ background:T.card, borderRadius:"22px 22px 0 0", padding:"20px 18px 36px", border:`1px solid ${T.border2}`, width:"100%" }}>
+          <div style={{ width:36, height:4, background:T.border2, borderRadius:2, margin:"0 auto 18px" }} />
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:18 }}>
+            <button onClick={()=>{if(calMonth===1){setCalMonth(12);setCalYear(y=>y-1);}else setCalMonth(m=>m-1);}} style={{ background:T.hero, border:"none", borderRadius:9, width:36, height:36, cursor:"pointer", fontSize:18, color:T.text }}>‹</button>
+            <div style={{ fontWeight:800, fontSize:15 }}>{MOIS_FR[calMonth-1]} {calYear}</div>
+            <button onClick={()=>{if(calMonth===12){setCalMonth(1);setCalYear(y=>y+1);}else setCalMonth(m=>m+1);}} style={{ background:T.hero, border:"none", borderRadius:9, width:36, height:36, cursor:"pointer", fontSize:18, color:T.text }}>›</button>
+          </div>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", marginBottom:8 }}>
+            {JOURS.map(j=>(<div key={j} style={{ textAlign:"center", fontSize:10, color:T.sub, fontWeight:700, padding:"4px 0" }}>{j}</div>))}
           </div>
           <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:4 }}>
             {Array(new Date(calYear,calMonth-1,1).getDay()).fill(null).map((_,i)=>(<div key={`e${i}`}/>))}
@@ -1873,7 +2041,7 @@ export default function Kashio() {
         <div onClick={e=>e.stopPropagation()} style={{ background:T.card, borderRadius:"22px 22px 0 0", padding:"22px 20px 40px", width:"100%", border:"1px solid #7B2FBE40" }}>
           <div style={{ width:36, height:4, background:T.border2, borderRadius:2, margin:"0 auto 18px" }} />
           <div style={{ fontWeight:900, fontSize:18, marginBottom:4 }}>💼 Solde de départ</div>
-          <div style={{ fontSize:12, color:T.sub, marginBottom:20 }}>Soldes électroniques du matin par réseau.</div>
+          <div style={{ fontSize:12, color:T.sub, marginBottom:20 }}>Unités disponibles ce matin par opérateur.</div>
           {floatEditOp===null?(<div style={{ marginBottom:18 }}>
             <div style={{ fontSize:11, color:T.sub, fontWeight:700, letterSpacing:1, marginBottom:10 }}>CHOISIR UN OPÉRATEUR</div>
             <div style={{ display:"flex", gap:8 }}>
