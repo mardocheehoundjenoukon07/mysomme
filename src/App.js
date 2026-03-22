@@ -818,8 +818,8 @@ export default function Kashio() {
   const [agentTxs,    setAgentTxs]    = useState([]);
   const [pendingCount,setPendingCount]= useState(0);
   const [showReport,  setShowReport]  = useState(false);
+  const [showPoint,   setShowPoint]   = useState(true);
   const [showCloture,   setShowCloture]   = useState(false);
-  const [showPoint,     setShowPoint]     = useState(true); // masquer/démasquer le point du soir
   const [clotureInputs, setClotureInputs] = useState({ cash:"", MTN:"", MOOV:"", Celtiis:"" });
   const [clotureData,   setClotureData]   = useState(null);
   const [retraitDist, setRetraitDist] = useState(false);
@@ -1180,13 +1180,13 @@ export default function Kashio() {
                       {showPoint?"Masquer":"Afficher"}
                     </button>
                   </div>
-                  <div style={{ fontSize:42, fontWeight:900, color:"#00C896", lineHeight:1, marginBottom:10, filter:showPoint?"none":"blur(12px)", transition:"filter 0.2s" }}>
-                    {fF(totalSoir)}
+                  <div style={{ fontSize:42, fontWeight:900, color:"#00C896", lineHeight:1, marginBottom:10, filter:showPoint?"none":"blur(10px)", transition:"filter 0.2s", userSelect:showPoint?"auto":"none" }}>
+                    {showPoint?fF(totalSoir):"••••••"}
                   </div>
                   <div style={{ display:"flex", justifyContent:"center", gap:20 }}>
                     <div style={{ textAlign:"center" }}>
                       <div style={{ fontSize:10, color:T.faint }}>Matin</div>
-                      <div style={{ fontSize:13, fontWeight:700, color:T.sub }}>{showPoint?fF(totalMatin):"••••"}</div>
+                      <div style={{ fontSize:13, fontWeight:700, color:T.sub }}>{fF(totalMatin)}</div>
                     </div>
                     <div style={{ width:1, background:T.border }}/>
                     <div style={{ textAlign:"center" }}>
@@ -1400,7 +1400,7 @@ export default function Kashio() {
                     </button>
                   </div>
                   <div style={{ fontSize:46, fontWeight:900, color:"#00C896", lineHeight:1, marginBottom:10, filter:showPoint?"none":"blur(12px)", userSelect:showPoint?"auto":"none", transition:"filter 0.2s" }}>
-                    {fF(ptSoir)}
+                    {showPoint?fF(ptSoir):"••••••"}
                   </div>
                   <div style={{ display:"flex", justifyContent:"center", gap:16 }}>
                     <div style={{ textAlign:"center" }}>
@@ -1816,25 +1816,6 @@ export default function Kashio() {
             <button onClick={()=>setConfirm(null)} style={{ flex:1, padding:14, borderRadius:12, background:T.hero, border:`1px solid ${T.border2}`, color:T.text, fontWeight:700, cursor:"pointer" }}>Annuler</button>
             <button onClick={()=>removeAgentTx(confirm)} style={{ flex:1, padding:14, borderRadius:12, background:"#89c423", border:"none", color:"#fff", fontWeight:800, cursor:"pointer" }}>Supprimer</button>
           </div>
-        </div>
-      </div>)}
-
-      {/* ══ MODAL CLÔTURE JOURNÉE ════════════════════════════════════════ */}
-          </div>
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:4 }}>
-            {Array(new Date(calYear,calMonth-1,1).getDay()).fill(null).map((_,i)=>(<div key={`e${i}`}/>))}
-            {Array(new Date(calYear,calMonth,0).getDate()).fill(null).map((_,i)=>{
-              const day=i+1, ds=`${calYear}-${String(calMonth).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
-              const isTod=ds===todayStr(), isSel=ds===selectedDate, isFut=ds>todayStr();
-              return (<button key={day} disabled={isFut} onClick={()=>{ setSelectedDate(ds); setShowCal(false); }}
-                style={{ width:"100%", aspectRatio:"1", borderRadius:10, border:isSel?"2px solid #00C896":isTod?`2px solid ${OP_COLORS.MTN}`:`1px solid ${T.border}`, background:isSel?"#00C89620":isTod?"#FFB80015":T.hero, color:isFut?T.faint:isSel?"#00C896":T.text, fontWeight:isSel||isTod?800:500, fontSize:13, cursor:isFut?"not-allowed":"pointer", opacity:isFut?0.3:1 }}>
-                {day}
-              </button>);
-            })}
-          </div>
-          <button onClick={()=>{ setSelectedDate(todayStr()); setShowCal(false); }} style={{ width:"100%", marginTop:16, padding:12, borderRadius:12, background:"linear-gradient(135deg,#00C896,#00A5FF)", border:"none", color:"#fff", fontWeight:800, fontSize:14, cursor:"pointer" }}>
-            📅 Aujourd'hui
-          </button>
         </div>
       </div>)}
 
