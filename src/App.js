@@ -577,21 +577,7 @@ function AuthScreen({ T, dark, setDark, onPatronLogin, onAgentLogin }) {
         </div>)}
 
         {/* ── PATRON OTP ── */}
-        {mode==="patron" && step===99 && (<div>  {/* HIDDEN - OTP bypassed */
-          <div style={{ textAlign:"center", marginBottom:28 }}>
-            <div style={{ fontSize:40, marginBottom:12 }}>📱</div>
-            <div style={{ fontWeight:900, fontSize:20, color:T.text, marginBottom:6 }}>Vérifie ton numéro</div>
-            <div style={{ fontSize:13, color:T.sub }}>Code envoyé au <strong style={{color:T.text}}>+229 01{form.telephone}</strong></div>
-          </div>
-          <input type="tel" placeholder="_ _ _ _ _ _" maxLength={6} value={form.otpCode||""} onChange={e=>setForm(f=>({...f,otpCode:e.target.value.replace(/\D/g,"").slice(0,6)}))} autoFocus
-            style={{...inp,fontSize:28,fontWeight:800,textAlign:"center",letterSpacing:12,marginBottom:14,border:`2px solid ${(form.otpCode||"").length===6?"#00C896":T.border}`}} />
-          {error && <div style={{ background:"#E6394618", color:"#E63946", borderRadius:10, padding:"10px", fontSize:12, fontWeight:700, marginBottom:14, textAlign:"center" }}>{error}</div>}
-          <button onClick={handlePatronOTP} disabled={loading||(form.otpCode||"").length!==6}
-            style={{ width:"100%", padding:16, borderRadius:12, background:(form.otpCode||"").length===6?"linear-gradient(135deg,#00C896,#00A5FF)":T.hero, border:"none", color:(form.otpCode||"").length===6?"#fff":T.sub, fontWeight:900, fontSize:15, cursor:"pointer" }}>
-            {loading?"⏳...":"✅ Confirmer"}
-          </button>
-          <button onClick={()=>setStep(1)} style={{ width:"100%", marginTop:10, padding:12, borderRadius:12, background:"transparent", border:`1px solid ${T.border}`, color:T.sub, fontSize:13, cursor:"pointer" }}>← Retour</button>
-        </div>)}
+        {/* OTP screen removed - bypass actif */}
 
         {/* ── PATRON CONNEXION ── */}
         {mode==="patron-login" && step==="patron-login-form" && (<div>
@@ -662,20 +648,7 @@ function AuthScreen({ T, dark, setDark, onPatronLogin, onAgentLogin }) {
         </div>)}
 
         {/* ── AGENT OTP ── */}
-        {mode==="agent" && step==="agent-otp-hidden" && (<div>  {/* HIDDEN - OTP bypassed */
-          <div style={{ textAlign:"center", marginBottom:28 }}>
-            <div style={{ fontSize:40, marginBottom:12 }}>📱</div>
-            <div style={{ fontWeight:900, fontSize:20, color:T.text, marginBottom:6 }}>Vérifie ton numéro</div>
-            <div style={{ fontSize:13, color:T.sub }}>Code envoyé au <strong style={{color:T.text}}>+229 01{form.telephone}</strong></div>
-          </div>
-          <input type="tel" placeholder="_ _ _ _ _ _" maxLength={6} value={form.otpCode||""} onChange={e=>setForm(f=>({...f,otpCode:e.target.value.replace(/\D/g,"").slice(0,6)}))} autoFocus
-            style={{...inp,fontSize:28,fontWeight:800,textAlign:"center",letterSpacing:12,marginBottom:14,border:`2px solid ${(form.otpCode||"").length===6?"#00C896":T.border}`}} />
-          {error && <div style={{ background:"#E6394618", color:"#E63946", borderRadius:10, padding:"10px", fontSize:12, fontWeight:700, marginBottom:14, textAlign:"center" }}>{error}</div>}
-          <button onClick={handleAgentOTP} disabled={loading||(form.otpCode||"").length!==6}
-            style={{ width:"100%", padding:16, borderRadius:12, background:(form.otpCode||"").length===6?"linear-gradient(135deg,#00C896,#00A5FF)":T.hero, border:"none", color:(form.otpCode||"").length===6?"#fff":T.sub, fontWeight:900, fontSize:15, cursor:"pointer" }}>
-            {loading?"⏳...":"✅ Confirmer"}
-          </button>
-        </div>)}
+        {/* OTP screen removed - bypass actif */}
 
         {/* ── AGENT CONNEXION ── */}
         {mode==="agent-login" && step==="agent-login-form" && (<div>
@@ -708,7 +681,7 @@ function AuthScreen({ T, dark, setDark, onPatronLogin, onAgentLogin }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // ─── APP PRINCIPALE ───────────────────────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════════════════════
-export default function CashPoint() {
+export default function Kashio() {
   const [dark,setDark]     = useState(true);
   const T                  = dark ? DARK : LIGHT;
   const OP_BG              = dark ? OP_BG_D : OP_BG_L;
