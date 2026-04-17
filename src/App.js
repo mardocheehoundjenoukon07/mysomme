@@ -981,6 +981,75 @@ export default function Kashio() {
                 )}
               </div>
 
+              {/* ── SECTION FORFAITS INLINE ── */}
+              {isToday&&(
+                <div style={{...card,padding:"14px 14px",marginBottom:12}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+                    <div style={{fontSize:11,color:T.sub,fontWeight:700,letterSpacing:"0.8px"}}>VENTE FORFAIT</div>
+                    <div style={{fontSize:10,color:T.faint}}>{txs.filter(t=>t.type==="forfait").length} vendu(s)</div>
+                  </div>
+
+                  {/* ETAPE 1 : Type */}
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6,marginBottom:8}}>
+                    {FORFAIT_TYPES.map(ft=>(
+                      <button key={ft.key} onClick={()=>setMForm(f=>({...f,forfait_type:f.forfait_type===ft.key?null:ft.key,operateur:null,montant:null}))}
+                        style={{padding:"9px 4px",borderRadius:10,border:`2px solid ${mForm.forfait_type===ft.key?"#A855F7":T.border}`,background:mForm.forfait_type===ft.key?"#A855F718":"transparent",color:mForm.forfait_type===ft.key?"#A855F7":T.sub,fontWeight:700,fontSize:11,cursor:"pointer",textAlign:"center"}}>
+                        {ft.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* ETAPE 2 : Reseau (visible si type choisi) */}
+                  {mForm.forfait_type&&(
+                    <div style={{display:"flex",gap:6,marginBottom:8}}>
+                      {OPS.map(op=>(
+                        <button key={op} onClick={()=>setMForm(f=>({...f,operateur:f.operateur===op?null:op,montant:null}))}
+                          style={{flex:1,padding:"9px 0",borderRadius:10,border:`2px solid ${mForm.operateur===op?OPC[op]:T.border}`,background:mForm.operateur===op?`${OPC[op]}18`:"transparent",color:mForm.operateur===op?OPC[op]:T.sub,fontWeight:800,fontSize:12,cursor:"pointer"}}>
+                          {op}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* ETAPE 3 : Montants (visible si réseau choisi) */}
+                  {mForm.forfait_type&&mForm.operateur&&(
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:5,marginBottom:10}}>
+                      {[100,200,500,1000,2000,3000,5000,10000,15000].map(v=>(
+                        <button key={v} onClick={()=>setMForm(f=>({...f,montant:f.montant===v?null:v}))}
+                          style={{padding:"8px 2px",borderRadius:8,border:`2px solid ${mForm.montant===v?OPC[mForm.operateur]:T.border}`,background:mForm.montant===v?`${OPC[mForm.operateur]}18`:"transparent",color:mForm.montant===v?OPC[mForm.operateur]:T.sub,fontWeight:700,fontSize:10,cursor:"pointer"}}>
+                          {v>=1000?`${v/1000}k`:v}F
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Bouton Enregistrer (visible si tout choisi) */}
+                  {mForm.forfait_type&&mForm.operateur&&mForm.montant?(
+                    <button onClick={async()=>{
+                      setSaving(true);
+                      const uid=agent.id||agent.telephone; const localId=Date.now();
+                      const tx={agent_id:agent.id,patron_id:agent.patron_id||null,type:"forfait",operateur:mForm.operateur,montant:Number(mForm.montant),commission:0,telephone:null,sous_type:mForm.forfait_type,heure:new Date().toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}),created_at:nowISO(),localId};
+                      const opt={...tx,id:localId}; setTxs(p=>[opt,...p]);
+                      const r=await api.saveTx(tx);
+                      if(r.ok){setTxs(p=>p.map(t=>t.id===localId?r.data[0]:t));}
+                      else{setFlashErr(r.error);setTimeout(()=>setFlashErr(null),5000);const pend=ls.get(KEY.pending(uid))||[];ls.set(KEY.pending(uid),[...pend,tx]);setPending(c=>c+1);}
+                      ls.set(KEY.txs(selDate,uid),[(r.ok?r.data[0]:opt),...(ls.get(KEY.txs(selDate,uid))||[])]);
+                      setSaving(false); setMForm({});
+                      if(r.ok){setFlash("forfait");setTimeout(()=>setFlash(null),2000);}
+                      setTimeout(()=>loadTxs(selDate),1200);
+                    }} disabled={saving}
+                      style={{width:"100%",padding:13,borderRadius:11,background:saving?T.hero:`linear-gradient(135deg,#A855F7,#7C3AED)`,border:"none",color:saving?T.sub:"#fff",fontWeight:900,fontSize:14,cursor:saving?"not-allowed":"pointer",display:"flex",alignItems:"center",justifyContent:"space-between",paddingLeft:16,paddingRight:16}}>
+                      <span>{FORFAIT_TYPES.find(f=>f.key===mForm.forfait_type)?.label} · {mForm.operateur}</span>
+                      <span style={{fontWeight:900,fontSize:16}}>{saving?"...":fF(mForm.montant)+" ✓"}</span>
+                    </button>
+                  ):(
+                    <div style={{fontSize:11,color:T.faint,textAlign:"center",padding:"4px 0"}}>
+                      {!mForm.forfait_type?"Choisir le type":!mForm.operateur?"Choisir le reseau":"Choisir le montant"}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Bouton terminer la journee */}
               {isToday&&agentPt!==null&&(
                 <button onClick={()=>{setCloseIn({cash:"",MTN:"",MOOV:"",Celtiis:""});setCloseResult(null);setShowClose(true);}}
@@ -1127,8 +1196,7 @@ export default function Kashio() {
         {/* ── FABs AGENT ──────────────────────────────────────────────────── */}
         {isAgent&&tab==="home"&&isToday&&(
           <div style={{position:"fixed",bottom:82,right:16,display:"flex",flexDirection:"column",gap:8,zIndex:60}}>
-            <button onClick={()=>{setModal("forfait");setMForm({});}} style={{height:38,padding:"0 14px",borderRadius:19,background:T.card,border:`1px solid #A855F740`,color:"#A855F7",fontSize:12,fontWeight:700,cursor:"pointer",boxShadow:"0 2px 10px rgba(0,0,0,0.2)"}}>Forfait</button>
-            <button onClick={()=>{setModal("retrait");setMForm({});}} style={{height:42,padding:"0 16px",borderRadius:21,background:T.card,border:`1px solid #4F8EF740`,color:"#4F8EF7",fontSize:13,fontWeight:700,cursor:"pointer",boxShadow:"0 2px 10px rgba(0,0,0,0.2)"}}>Retrait</button>
+<button onClick={()=>{setModal("retrait");setMForm({});}} style={{height:42,padding:"0 16px",borderRadius:21,background:T.card,border:`1px solid #4F8EF740`,color:"#4F8EF7",fontSize:13,fontWeight:700,cursor:"pointer",boxShadow:"0 2px 10px rgba(0,0,0,0.2)"}}>Retrait</button>
             <button onClick={()=>{setModal("depot");setMForm({});}} style={{height:48,padding:"0 18px",borderRadius:24,background:"linear-gradient(135deg,#00C896,#00A5FF)",border:"none",color:"#fff",fontSize:14,fontWeight:700,cursor:"pointer",boxShadow:"0 4px 14px #00C89650"}}>Depot</button>
           </div>
         )}
