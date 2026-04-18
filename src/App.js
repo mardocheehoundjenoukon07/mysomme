@@ -599,6 +599,7 @@ export default function Kashio() {
     if (cash===null) return null;
     const d=txs.filter(t=>t.type==="depot").reduce((s,t)=>s+Number(t.montant),0);
     const r=txs.filter(t=>t.type==="retrait").reduce((s,t)=>s+Number(t.montant),0);
+    // Forfait : le client paie cash → cash augmente du montant du forfait
     const f=txs.filter(t=>t.type==="forfait").reduce((s,t)=>s+Number(t.montant),0);
     return cash+d-r+f;
   }
@@ -606,6 +607,7 @@ export default function Kashio() {
     if (floats[op]===null||floats[op]===undefined) return null;
     const d=txs.filter(t=>t.operateur===op&&t.type==="depot").reduce((s,t)=>s+Number(t.montant),0);
     const r=txs.filter(t=>t.operateur===op&&t.type==="retrait").reduce((s,t)=>s+Number(t.montant),0);
+    // Forfait : débite le float virtuel de l'opérateur correspondant
     const f=txs.filter(t=>t.operateur===op&&t.type==="forfait").reduce((s,t)=>s+Number(t.montant),0);
     return floats[op]-d+r-f;
   }
@@ -947,6 +949,7 @@ export default function Kashio() {
                   <div style={{fontSize:10,color:T.sub,fontWeight:700,marginBottom:5}}>CASH ACTUEL</div>
                   <div style={{fontSize:20,fontWeight:900,color:agentCashNow!==null&&agentCashNow<0?"#E63946":"#00C896"}}>{agentCashNow!==null?(hide?mask():fF(agentCashNow)):"—"}</div>
                   {cash!==null&&<div style={{fontSize:9,color:T.faint,marginTop:2}}>Depart {fF(cash)}</div>}
+                  {(()=>{const forf=txs.filter(t=>t.type==="forfait").reduce((s,t)=>s+Number(t.montant),0);return forf>0?<div style={{fontSize:9,color:"#00C896",marginTop:1}}>+{fF(forf)} forfaits</div>:null;})()}
                 </div>
 
                 {/* Frais gagnes */}
@@ -957,28 +960,36 @@ export default function Kashio() {
                 </div>
 
                 {/* MoMo MTN */}
-                {floats.MTN!==null&&(
+                {floats.MTN!==null&&(()=>{
+                  const fMTN=txs.filter(t=>t.operateur==="MTN"&&t.type==="forfait").reduce((s,t)=>s+Number(t.montant),0);
+                  return (
                   <div style={{...card,padding:"14px 13px",borderLeft:`3px solid ${OPC.MTN}`}}>
                     <div style={{fontSize:10,color:T.sub,fontWeight:700,marginBottom:5}}>MTN</div>
                     <div style={{fontSize:18,fontWeight:900,color:calcFloat("MTN")!==null&&calcFloat("MTN")<0?"#E63946":OPC.MTN}}>{hide?mask():fF(calcFloat("MTN"))}</div>
                     <div style={{fontSize:9,color:T.faint,marginTop:2}}>Depart {fF(floats.MTN)}</div>
-                  </div>
-                )}
-                {/* MoMo MOOV */}
-                {floats.MOOV!==null&&(
+                    {fMTN>0&&<div style={{fontSize:9,color:OPC.MTN,marginTop:2}}>Forfaits -{fF(fMTN)}</div>}
+                  </div>);
+                })()}
+                {floats.MOOV!==null&&(()=>{
+                  const fMOOV=txs.filter(t=>t.operateur==="MOOV"&&t.type==="forfait").reduce((s,t)=>s+Number(t.montant),0);
+                  return (
                   <div style={{...card,padding:"14px 13px",borderLeft:`3px solid ${OPC.MOOV}`}}>
                     <div style={{fontSize:10,color:T.sub,fontWeight:700,marginBottom:5}}>MOOV</div>
                     <div style={{fontSize:18,fontWeight:900,color:calcFloat("MOOV")!==null&&calcFloat("MOOV")<0?"#E63946":OPC.MOOV}}>{hide?mask():fF(calcFloat("MOOV"))}</div>
                     <div style={{fontSize:9,color:T.faint,marginTop:2}}>Depart {fF(floats.MOOV)}</div>
-                  </div>
-                )}
-                {floats.Celtiis!==null&&(
+                    {fMOOV>0&&<div style={{fontSize:9,color:OPC.MOOV,marginTop:2}}>Forfaits -{fF(fMOOV)}</div>}
+                  </div>);
+                })()}
+                {floats.Celtiis!==null&&(()=>{
+                  const fCELT=txs.filter(t=>t.operateur==="Celtiis"&&t.type==="forfait").reduce((s,t)=>s+Number(t.montant),0);
+                  return (
                   <div style={{...card,padding:"14px 13px",borderLeft:`3px solid ${OPC.Celtiis}`,gridColumn:floats.MTN===null&&floats.MOOV===null?"1/-1":"auto"}}>
                     <div style={{fontSize:10,color:T.sub,fontWeight:700,marginBottom:5}}>CELTIIS</div>
                     <div style={{fontSize:18,fontWeight:900,color:calcFloat("Celtiis")!==null&&calcFloat("Celtiis")<0?"#E63946":OPC.Celtiis}}>{hide?mask():fF(calcFloat("Celtiis"))}</div>
                     <div style={{fontSize:9,color:T.faint,marginTop:2}}>Depart {fF(floats.Celtiis)}</div>
-                  </div>
-                )}
+                    {fCELT>0&&<div style={{fontSize:9,color:OPC.Celtiis,marginTop:2}}>Forfaits -{fF(fCELT)}</div>}
+                  </div>);
+                })()}
               </div>
 
               {/* ── SECTION FORFAITS INLINE ── */}
@@ -1025,23 +1036,36 @@ export default function Kashio() {
 
                   {/* Bouton Enregistrer (visible si tout choisi) */}
                   {mForm.forfait_type&&mForm.operateur&&mForm.montant?(
-                    <button onClick={async()=>{
-                      setSaving(true);
-                      const uid=agent.id||agent.telephone; const localId=Date.now();
-                      const tx={agent_id:agent.id,patron_id:agent.patron_id||null,type:"forfait",operateur:mForm.operateur,montant:Number(mForm.montant),commission:0,telephone:null,sous_type:mForm.forfait_type,heure:new Date().toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}),created_at:nowISO(),localId};
-                      const opt={...tx,id:localId}; setTxs(p=>[opt,...p]);
-                      const r=await api.saveTx(tx);
-                      if(r.ok){setTxs(p=>p.map(t=>t.id===localId?r.data[0]:t));}
-                      else{setFlashErr(r.error);setTimeout(()=>setFlashErr(null),5000);const pend=ls.get(KEY.pending(uid))||[];ls.set(KEY.pending(uid),[...pend,tx]);setPending(c=>c+1);}
-                      ls.set(KEY.txs(selDate,uid),[(r.ok?r.data[0]:opt),...(ls.get(KEY.txs(selDate,uid))||[])]);
-                      setSaving(false); setMForm({});
-                      if(r.ok){setFlash("forfait");setTimeout(()=>setFlash(null),2000);}
-                      setTimeout(()=>loadTxs(selDate),1200);
-                    }} disabled={saving}
-                      style={{width:"100%",padding:13,borderRadius:11,background:saving?T.hero:`linear-gradient(135deg,#A855F7,#7C3AED)`,border:"none",color:saving?T.sub:"#fff",fontWeight:900,fontSize:14,cursor:saving?"not-allowed":"pointer",display:"flex",alignItems:"center",justifyContent:"space-between",paddingLeft:16,paddingRight:16}}>
-                      <span>{FORFAIT_TYPES.find(f=>f.key===mForm.forfait_type)?.label} · {mForm.operateur}</span>
-                      <span style={{fontWeight:900,fontSize:16}}>{saving?"...":fF(mForm.montant)+" ✓"}</span>
-                    </button>
+                    <div>
+                      {/* Impact visuel : cash monte, float descend */}
+                      <div style={{display:"flex",gap:6,marginBottom:8}}>
+                        <div style={{flex:1,background:"#00C89614",borderRadius:8,padding:"6px 10px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                          <span style={{fontSize:10,color:"#00C896",fontWeight:700}}>Cash liquide</span>
+                          <span style={{fontSize:12,fontWeight:900,color:"#00C896"}}>+{fF(mForm.montant)}</span>
+                        </div>
+                        <div style={{flex:1,background:`${OPC[mForm.operateur]}14`,borderRadius:8,padding:"6px 10px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                          <span style={{fontSize:10,color:OPC[mForm.operateur],fontWeight:700}}>{mForm.operateur}</span>
+                          <span style={{fontSize:12,fontWeight:900,color:OPC[mForm.operateur]}}>-{fF(mForm.montant)}</span>
+                        </div>
+                      </div>
+                      <button onClick={async()=>{
+                        setSaving(true);
+                        const uid=agent.id||agent.telephone; const localId=Date.now();
+                        const tx={agent_id:agent.id,patron_id:agent.patron_id||null,type:"forfait",operateur:mForm.operateur,montant:Number(mForm.montant),commission:0,telephone:null,sous_type:mForm.forfait_type,heure:new Date().toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}),created_at:nowISO(),localId};
+                        const opt={...tx,id:localId}; setTxs(p=>[opt,...p]);
+                        const r=await api.saveTx(tx);
+                        if(r.ok){setTxs(p=>p.map(t=>t.id===localId?r.data[0]:t));}
+                        else{setFlashErr(r.error);setTimeout(()=>setFlashErr(null),5000);const pend=ls.get(KEY.pending(uid))||[];ls.set(KEY.pending(uid),[...pend,tx]);setPending(c=>c+1);}
+                        ls.set(KEY.txs(selDate,uid),[(r.ok?r.data[0]:opt),...(ls.get(KEY.txs(selDate,uid))||[])]);
+                        setSaving(false); setMForm({});
+                        if(r.ok){setFlash("forfait");setTimeout(()=>setFlash(null),2000);}
+                        setTimeout(()=>loadTxs(selDate),1200);
+                      }} disabled={saving}
+                        style={{width:"100%",padding:13,borderRadius:11,background:saving?T.hero:"linear-gradient(135deg,#A855F7,#7C3AED)",border:"none",color:saving?T.sub:"#fff",fontWeight:900,fontSize:14,cursor:saving?"not-allowed":"pointer",display:"flex",alignItems:"center",justifyContent:"space-between",paddingLeft:16,paddingRight:16}}>
+                        <span>{FORFAIT_TYPES.find(f=>f.key===mForm.forfait_type)?.label} · {mForm.operateur}</span>
+                        <span style={{fontWeight:900,fontSize:16}}>{saving?"...":fF(mForm.montant)+" ✓"}</span>
+                      </button>
+                    </div>
                   ):(
                     <div style={{fontSize:11,color:T.faint,textAlign:"center",padding:"4px 0"}}>
                       {!mForm.forfait_type?"Choisir le type":!mForm.operateur?"Choisir le reseau":"Choisir le montant"}
